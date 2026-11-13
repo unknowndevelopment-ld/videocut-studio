@@ -29,6 +29,9 @@ public:
     static QImage textFrame(const Clip &clip, double progress);
     static QString textSequence(const Clip &clip, double fps, double duration);
     static double textAnimationTime() { return 0.55; }
+
+    static QImage shapeFrame(const Clip &clip);
+    static QString shapePng(const Clip &clip);
     static QStringList buildCommand(const Project &project, const QString &outPath,
                                     const RenderOptions &opts, double *totalSeconds);
     static QString estimateSize(const Project &project, const RenderOptions &opts);

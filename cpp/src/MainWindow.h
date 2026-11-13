@@ -16,6 +16,7 @@ class QLabel;
 class QAction;
 class QPushButton;
 class QSplitter;
+class QMenu;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -61,6 +62,8 @@ private:
     Track *pickTrack(ClipKind kind);
     double appendStart(const QString &trackId) const;
     void addText();
+    void addShape(const QString &type);
+    QMenu *createShapeMenu(QWidget *parent);
 
     void splitClip();
     void deleteClips(bool ripple);

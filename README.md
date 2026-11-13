@@ -5,7 +5,7 @@ composited preview, no account, no watermark, no upload.
 
 **Repository:** https://github.com/unknowndevelopment-ld/videocut-studio
 
-**Install:** run `VideoCutStudio-Setup-1.3.0.exe` — a single branded installer
+**Install:** run `VideoCutStudio-Setup-1.4.0.exe` — a single branded installer
 with no wizard and no MSI. It installs per-user (no UAC prompt) and adds the
 Start Menu entry, desktop shortcut, `.vcs` association and an "Apps & features"
 entry.
@@ -38,6 +38,12 @@ entrance animations: fade in, pop, slide left/right/up/down and typewriter
 (character-by-character with a cursor). Animations render frame-for-frame in
 the preview *and* in the export.
 
+**Shapes & annotations** — arrows, circles, rectangles, lines, triangles,
+stars, check marks and crosses. Pick one from **Shapes** in the toolbar (or
+**A** for a quick arrow). Drag/scale/rotate them like any clip, then set the
+colour, thickness, fill and a dark readable edge — great for pointing at
+something in a screen recording. They render in the preview and the export.
+
 **Looks** — one-click colour presets: Cinematic, Vivid, Black & white, Warm,
 Cool, Vintage. They just set the grading sliders, so you can tweak afterwards.
 
@@ -52,6 +58,11 @@ NLE previews.
 
 **Export** — MP4 (H.264), WebM (VP9), MKV, GIF; 480p → 4K plus vertical and
 square; quality slider with size estimate, live progress, cancel.
+
+**Fast export startup** — each media file is opened once and fanned out to all
+clips that use it, text intro frames are rendered only for the animation, and
+ffmpeg is warmed in the background at launch, so the wait before the progress
+bar moves is short even on a long timeline.
 
 **Projects** — `.vcs` JSON, undo/redo on everything, remembered window layout.
 
@@ -94,6 +105,7 @@ The preview is built to stay at 30 fps rather than look pretty and stutter:
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
 | `Ctrl+I` / `Ctrl+E` | Import / export |
 | `T` | Add text |
+| `A` | Add arrow (all shapes are in the **Shapes** menu) |
 | `N` | Snapping |
 | `Alt+L` | Accessible clip list |
 | `Alt+H` | High contrast |
@@ -113,7 +125,7 @@ progress bar, and a "Launch" button when it's done. Details:
   no admin rights.
 - Adds Start Menu + desktop shortcuts, a `.vcs` file association, an `AppPaths`
   entry and an **Apps & features** entry with its own uninstaller.
-- Silent/upgrade mode: `VideoCutStudio-Setup-1.3.0.exe --silent` (used by the
+- Silent/upgrade mode: `VideoCutStudio-Setup-1.4.0.exe --silent` (used by the 
   built-in updater).
 - Uninstall from **Settings → Apps** (or `Uninstall.exe /S` in the install
   folder); projects and settings are left alone.
@@ -130,7 +142,7 @@ The app updates itself from GitHub Releases:
    ```
    That produces `dist-cpp\VideoCutStudio-Setup-<version>.exe` and `update.json`
    (version, size, SHA-256).
-3. Tag and push: `git tag v1.3.0; git push --tags`. The workflow in
+3. Tag and push: `git tag v1.4.0; git push --tags`. The workflow in 
    `.github/workflows/release.yml` builds on `windows-latest` and attaches the
    installer + `update.json` to the release.
 4. Installed copies check `https://api.github.com/repos/<repo>/releases/latest`

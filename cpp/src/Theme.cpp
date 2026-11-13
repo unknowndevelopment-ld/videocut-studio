@@ -257,6 +257,32 @@ static void drawIcon(const QString &name, QPainter &p, const QRectF &r, const QC
         p.drawLine(QPointF(4, 6), QPointF(20, 6));
         p.drawLine(QPointF(12, 6), QPointF(12, 20));
         p.drawLine(QPointF(8, 20), QPointF(16, 20));
+    } else if (name == "circle") {
+        p.drawEllipse(QRectF(4, 4, 16, 16));
+    } else if (name == "rect") {
+        p.drawRoundedRect(QRectF(4, 6, 16, 12), 2, 2);
+    } else if (name == "triangle") {
+        p.drawPolygon(QPolygonF({QPointF(12, 4), QPointF(21, 20), QPointF(3, 20)}));
+    } else if (name == "star") {
+        QPolygonF star;
+        for (int i = 0; i < 10; ++i) {
+            const double a = -3.14159265358979323846 / 2.0 + i * 3.14159265358979323846 / 5.0;
+            const double rr = (i % 2 == 0) ? 9.0 : 3.8;
+            star << QPointF(12 + rr * std::cos(a), 12 + rr * std::sin(a));
+        }
+        p.drawPolygon(star);
+    } else if (name == "check") {
+        p.drawPolyline(QPolygonF({QPointF(4, 12.5), QPointF(9.5, 18), QPointF(20, 6)}));
+    } else if (name == "cross") {
+        p.drawLine(QPointF(5, 5), QPointF(19, 19));
+        p.drawLine(QPointF(19, 5), QPointF(5, 19));
+    } else if (name == "arrow") {
+        p.drawLine(QPointF(4, 20), QPointF(18, 6));
+        p.setBrush(color);
+        p.drawPolygon(QPolygonF({QPointF(20.5, 3.5), QPointF(12.5, 7), QPointF(17, 11.5)}));
+        p.setBrush(Qt::NoBrush);
+    } else if (name == "line") {
+        p.drawLine(QPointF(4, 20), QPointF(20, 4));
     } else if (name == "export") {
         p.drawLine(QPointF(12, 15), QPointF(12, 4));
         p.drawLine(QPointF(7.5, 8), QPointF(12, 3.5));

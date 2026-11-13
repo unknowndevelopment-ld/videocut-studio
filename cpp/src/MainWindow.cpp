@@ -33,6 +33,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMimeData>
@@ -231,6 +232,16 @@ MainWindow::MainWindow(QWidget *parent)
                 qApp->quit();
             });
 
+    if (!qApp->arguments().contains("--selftest")) {
+        // Load ffmpeg once in the background so antivirus scanning and the file
+        // cache are warm before the first export starts.
+        MediaUtils::runAsync(this, []() {
+            MediaUtils::run({MediaUtils::ffmpegPath(), "-v", "error",
+                             "-f", "lavfi", "-i", "color=c=black:s=32x32:r=1:d=0.1",
+                             "-c:v", "libx264", "-f", "null", "-"}, 20000);
+        }, []() {});
+    }
+
     if (!qApp->arguments().contains("--selftest") && Updater::configured()) {
         QTimer::singleShot(9000, this, [this]() {
             m_checkInteractive = false;
@@ -286,6 +297,9 @@ void MainWindow::buildUi()
     auto *importBtn = makeToolButton(tr("Import"), "plus", tr("Import media (Ctrl+I)"));
     importBtn->setObjectName("Primary");
     auto *textBtn = makeToolButton(tr("Text"), "text", tr("Add text (T)"));
+    auto *shapeBtn = makeToolButton(tr("Shapes"), "arrow",
+                                    tr("Add an arrow, circle or other annotation (A)"));
+    shapeBtn->setMenu(createShapeMenu(shapeBtn));
     auto *splitBtn = makeToolButton(tr("Split"), "split", tr("Split at playhead (S)"));
     auto *deleteBtn = makeToolButton(tr("Delete"), "trash", tr("Delete selection (Del)"));
     auto *undoBtn = makeToolButton(QString(), "undo", tr("Undo (Ctrl+Z)"), true);
@@ -311,6 +325,7 @@ void MainWindow::buildUi()
     bar->addSpacing(Theme::px(14));
     bar->addWidget(importBtn);
     bar->addWidget(textBtn);
+    bar->addWidget(shapeBtn);
     bar->addSpacing(Theme::px(4));
     bar->addWidget(separator());
     bar->addSpacing(Theme::px(4));
@@ -608,6 +623,7 @@ void MainWindow::createActions()
 
     auto *addMenu = menuBar()->addMenu(tr("&Add"));
     addMenu->addAction(actAddText);
+    addMenu->addMenu(createShapeMenu(addMenu));
     addMenu->addAction(actAddTransition);
     addMenu->addAction(actAddVideoTrack);
     addMenu->addAction(actAddAudioTrack);
@@ -656,7 +672,8 @@ void MainWindow::wireSignals()
     connect(m_timeline, &TimelineWidget::selectionChanged, this, &MainWindow::onSelectionChanged);
     connect(m_timeline, &TimelineWidget::clipActivated, this, [this](const QString &id) {
         if (Clip *c = m_project.clip(id))
-            if (c->kind == ClipKind::Text) m_properties->setClips({c});
+            if (c->kind == ClipKind::Text || c->kind == ClipKind::Shape)
+                m_properties->setClips({c});
     });
     connect(m_timeline, &TimelineWidget::mediaDropped, this,
             [this](const QStringList &paths, const QString &trackId, double at) {
@@ -825,7 +842,7 @@ Track *MainWindow::pickTrack(ClipKind kind)
         return m_project.addTrack(ClipKind::Audio);
     }
     auto video = m_project.videoTracks();
-    if (kind == ClipKind::Text) {
+    if (kind == ClipKind::Text || kind == ClipKind::Shape) {
         for (Track *t : video)
             if (!t->locked) return t;
         return m_project.addTrack(ClipKind::Video);
@@ -912,6 +929,50 @@ void MainWindow::addText()
     m_timeline->selectIds({clip.id});
     onProjectChanged();
     announce(tr("Text clip added. Edit it in the properties panel."));
+}
+
+QMenu *MainWindow::createShapeMenu(QWidget *parent)
+{
+    auto *menu = new QMenu(tr("Shapes"), parent);
+    const QVector<QPair<QString, QString>> shapes = {
+        {"arrow", tr("Arrow")},      {"circle", tr("Circle")},  {"rect", tr("Rectangle")},
+        {"line", tr("Line")},        {"triangle", tr("Triangle")}, {"star", tr("Star")},
+        {"check", tr("Check mark")}, {"cross", tr("Cross")},
+    };
+    for (const auto &shape : shapes) {
+        QAction *action = menu->addAction(Theme::icon(shape.first, Theme::text(), Theme::px(16)),
+                                          shape.second);
+        const QString type = shape.first;
+        connect(action, &QAction::triggered, this, [this, type]() { addShape(type); });
+    }
+    return menu;
+}
+
+void MainWindow::addShape(const QString &type)
+{
+    pushUndo(tr("Add shape"));
+    Track *track = pickTrack(ClipKind::Shape);
+    if (!track) return;
+
+    const QHash<QString, QString> names = {
+        {"arrow", tr("Arrow")},      {"circle", tr("Circle")},  {"rect", tr("Rectangle")},
+        {"line", tr("Line")},        {"triangle", tr("Triangle")}, {"star", tr("Star")},
+        {"check", tr("Check mark")}, {"cross", tr("Cross")},
+    };
+
+    Clip clip;
+    clip.track = track->id;
+    clip.kind = ClipKind::Shape;
+    clip.shapeType = type;
+    clip.name = names.value(type, type);
+    clip.start = m_timeline->playhead();
+    clip.duration = 4.0;
+    clip.scale = (type == "arrow" || type == "line") ? 0.62 : 0.45;
+    clip.shapeStroke = qMax(6, m_project.height / 70);
+    m_project.clips.append(clip);
+    m_timeline->selectIds({clip.id});
+    onProjectChanged();
+    announce(tr("%1 added. Adjust it in the properties panel.").arg(clip.name));
 }
 
 // ----------------------------------------------------------------- editing
@@ -1177,7 +1238,7 @@ void MainWindow::showShortcuts()
            "S — split selected clip at playhead<br>"
            "Delete — delete · Shift+Delete — ripple delete<br>"
            "Ctrl+D — duplicate · Ctrl+C / Ctrl+V — copy / paste<br>"
-           "T — add text · N — toggle snapping<br>"
+           "T — add text · A — add arrow · N — toggle snapping<br>"
            "Ctrl+Z / Ctrl+Y — undo / redo<br><br>"
            "<b>Timeline</b><br>"
            "Ctrl+Wheel — zoom · Wheel — scroll · Middle drag — pan<br>"
@@ -1253,6 +1314,7 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
     if (key == Qt::Key_Space) togglePlay();
     else if (key == Qt::Key_S) splitClip();
     else if (key == Qt::Key_T) addText();
+    else if (key == Qt::Key_A) addShape("arrow");
     else if (key == Qt::Key_N) m_btnSnap->toggle();
     else if (key == Qt::Key_F) m_timeline->zoomFit();
     else if (key == Qt::Key_Plus || key == Qt::Key_Equal) m_timeline->zoomIn();
@@ -1405,6 +1467,18 @@ void MainWindow::runSelfTest(const QString &outDir)
     b.fadeIn = 0.4;
     demo.clips << b;
 
+    // Same source file as clip A: exercises the shared-input (split) path.
+    Clip c;
+    c.track = v1;
+    c.kind = ClipKind::Video;
+    c.path = clipA;
+    c.name = "clipA.mp4 (reuse)";
+    c.start = 9.0;
+    c.duration = 1.5;
+    c.srcIn = 2.5;
+    c.srcDur = 8;
+    demo.clips << c;
+
     Clip img;
     img.track = v2;
     img.kind = ClipKind::Image;
@@ -1429,6 +1503,34 @@ void MainWindow::runSelfTest(const QString &outDir)
     txt.color = "#ffe066";
     txt.posY = 0.16;
     demo.clips << txt;
+
+    Clip circle;
+    circle.track = v2;
+    circle.kind = ClipKind::Shape;
+    circle.shapeType = "circle";
+    circle.name = "Circle";
+    circle.start = 1.0;
+    circle.duration = 4.5;
+    circle.scale = 0.42;
+    circle.x = 300;
+    circle.y = 80;
+    circle.shapeColor = "#ffe066";
+    circle.shapeStroke = 18;
+    demo.clips << circle;
+
+    Clip arrow;
+    arrow.track = v2;
+    arrow.kind = ClipKind::Shape;
+    arrow.shapeType = "arrow";
+    arrow.name = "Arrow";
+    arrow.start = 4.8;
+    arrow.duration = 3.5;
+    arrow.scale = 0.55;
+    arrow.x = -180;
+    arrow.y = -40;
+    arrow.shapeColor = "#ff3b46";
+    arrow.shapeStroke = 20;
+    demo.clips << arrow;
 
     Clip musicClip;
     musicClip.track = a1;

@@ -4,6 +4,7 @@
 #include "Theme.h"
 
 #include <QCryptographicHash>
+#include <QElapsedTimer>
 #include <climits>
 #include <cmath>
 #include <QDir>
@@ -13,6 +14,7 @@
 #include <QFontMetrics>
 #include <QImage>
 #include <QPainter>
+#include <QPainterPath>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QtMath>
@@ -80,9 +82,13 @@ struct Graph {
     QStringList inputs;
     QStringList filters;
     QStringList audioLabels;
-    QHash<QString, int> inputIndex;
+    QHash<QString, int> inputIndex;              // per-clip sources (text, shapes, images)
+    QHash<QString, int> fileInput;               // media path -> shared input
+    QHash<QString, QStringList> videoBranches;   // media path -> free split pads
+    QHash<QString, QStringList> audioBranches;
     double total = 0.0;
     int inputCount = 0;
+    int serial = 0;
 
     int addInput(const QStringList &args)
     {
@@ -90,7 +96,91 @@ struct Graph {
         inputs << args;
         return index;
     }
+
+    QString takeBranch(QHash<QString, QStringList> &branches, const QString &path)
+    {
+        auto it = branches.find(path);
+        if (it == branches.end() || it->isEmpty()) return {};
+        return it->takeFirst();
+    }
 };
+
+/*  A file used by several clips only needs to be opened once.  Opening every
+ *  clip as its own input is the main reason ffmpeg took seconds to start on
+ *  longer timelines, so give each unique file a single input and fan it out
+ *  with split/asplit.                                                     */
+void shareMedia(Graph &g, const Project &project)
+{
+    QHash<QString, int> videoUse;
+    QHash<QString, int> audioUse;
+
+    for (const Track &track : project.tracks) {
+        if (track.kind != ClipKind::Video || track.hidden) continue;
+        for (const Clip &clip : project.clips) {
+            if (clip.track != track.id || clip.start >= g.total) continue;
+            if (clip.kind != ClipKind::Video || clip.path.isEmpty()) continue;
+            if (!QFileInfo::exists(clip.path)) continue;
+            const MediaInfo info = MediaUtils::probe(clip.path);
+            if (info.isImage() || !info.hasVideo) continue;
+            videoUse[clip.path] += 1;
+        }
+    }
+
+    for (const Track &track : project.tracks) {
+        if (track.muted) continue;
+        for (const Clip &clip : project.clips) {
+            if (clip.track != track.id || clip.mute) continue;
+            if (clip.start >= g.total) continue;
+            if (clip.path.isEmpty() || !QFileInfo::exists(clip.path)) continue;
+            bool wantsAudio = clip.kind == ClipKind::Audio;
+            if (!wantsAudio && clip.kind == ClipKind::Video)
+                wantsAudio = MediaUtils::probe(clip.path).hasAudio;
+            if (wantsAudio) audioUse[clip.path] += 1;
+        }
+    }
+
+    QStringList paths = videoUse.keys();
+    for (const QString &path : audioUse.keys())
+        if (!paths.contains(path)) paths << path;
+
+    for (const QString &path : paths) {
+        if (g.fileInput.contains(path)) continue;
+        const int idx = g.addInput({"-i", path});
+        g.fileInput.insert(path, idx);
+
+        const int videos = videoUse.value(path);
+        if (videos == 1) {
+            g.videoBranches[path] = {QString("%1:v").arg(idx)};
+        } else if (videos > 1) {
+            const QString tag = QString("s%1").arg(g.serial++);
+            QString split = QString("[%1:v]split=%2").arg(idx).arg(videos);
+            QStringList labels;
+            for (int i = 0; i < videos; ++i) {
+                const QString label = QString("%1v%2").arg(tag).arg(i);
+                split += "[" + label + "]";
+                labels << label;
+            }
+            g.filters << split;
+            g.videoBranches[path] = labels;
+        }
+
+        const int audios = audioUse.value(path);
+        if (audios == 1) {
+            g.audioBranches[path] = {QString("%1:a").arg(idx)};
+        } else if (audios > 1) {
+            const QString tag = QString("m%1").arg(g.serial++);
+            QString split = QString("[%1:a]asplit=%2").arg(idx).arg(audios);
+            QStringList labels;
+            for (int i = 0; i < audios; ++i) {
+                const QString label = QString("%1a%2").arg(tag).arg(i);
+                split += "[" + label + "]";
+                labels << label;
+            }
+            g.filters << split;
+            g.audioBranches[path] = labels;
+        }
+    }
+}
 
 int clipInput(Graph &g, const Project &project, const Clip &clip, const RenderOptions &opts)
 {
@@ -111,6 +201,11 @@ int clipInput(Graph &g, const Project &project, const Clip &clip, const RenderOp
         const QString png = Renderer::textPng(clip);
         idx = g.addInput({"-loop", "1", "-framerate", QString::number(opts.fps, 'g', 8),
                           "-t", QString::number(qMax(clip.duration, 0.1) + 1.0, 'f', 3), "-i", png});
+    } else if (clip.kind == ClipKind::Shape) {
+        const QString png = Renderer::shapePng(clip);
+        if (png.isEmpty()) return -1;
+        idx = g.addInput({"-loop", "1", "-framerate", QString::number(opts.fps, 'g', 8),
+                          "-t", QString::number(qMax(clip.duration, 0.1) + 1.0, 'f', 3), "-i", png});
     } else if (!clip.path.isEmpty() && QFileInfo::exists(clip.path)) {
         const MediaInfo info = MediaUtils::probe(clip.path);
         if (clip.kind == ClipKind::Image || info.isImage()) {
@@ -127,8 +222,8 @@ int clipInput(Graph &g, const Project &project, const Clip &clip, const RenderOp
     return idx;
 }
 
-QString videoChain(Graph &g, const Project &project, const Clip &clip, int idx, bool isText,
-                   const RenderOptions &opts, const QString &label)
+QString videoChain(Graph &g, const Project &project, const Clip &clip, const QString &source,
+                   bool isText, const RenderOptions &opts, const QString &label)
 {
     const int W = opts.width;
     const int H = opts.height;
@@ -161,11 +256,11 @@ QString videoChain(Graph &g, const Project &project, const Clip &clip, int idx, 
                      .arg(clip.duration - fadeOut, 0, 'f', 3).arg(fadeOut, 0, 'f', 3);
 
     parts << QString("setpts=PTS+%1/TB").arg(clip.start, 0, 'f', 6);
-    g.filters << QString("[%1:v]").arg(idx) + parts.join(',') + "[" + label + "]";
+    g.filters << "[" + source + "]" + parts.join(',') + "[" + label + "]";
     return label;
 }
 
-void audioChain(Graph &g, const Clip &clip, int idx, const QString &label)
+void audioChain(Graph &g, const Clip &clip, const QString &source, const QString &label)
 {
     const double speed = qMax(0.05, clip.speed);
     const double srcEnd = clip.srcIn + clip.duration * speed;
@@ -183,7 +278,7 @@ void audioChain(Graph &g, const Clip &clip, int idx, const QString &label)
     const int delay = qMax(0, int(qRound(clip.start * 1000.0)));
     if (delay) parts << QString("adelay=%1|%1").arg(delay);
     parts << "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo";
-    g.filters << QString("[%1:a]").arg(idx) + parts.join(',') + "[" + label + "]";
+    g.filters << "[" + source + "]" + parts.join(',') + "[" + label + "]";
     g.audioLabels << label;
 }
 
@@ -192,6 +287,7 @@ QString buildFilterGraph(Graph &g, const Project &projectConst, const RenderOpti
     Project &project = const_cast<Project &>(projectConst);
     const int W = opts.width;
     const int H = opts.height;
+    shareMedia(g, project);
     g.filters << QString("color=c=%1:s=%2x%3:r=%4:d=%5,format=rgba[base]")
                      .arg(hexColor(project.background)).arg(W).arg(H)
                      .arg(opts.fps, 0, 'g', 8).arg(g.total, 0, 'f', 3);
@@ -205,11 +301,17 @@ QString buildFilterGraph(Graph &g, const Project &projectConst, const RenderOpti
         for (Clip *clipPtr : project.clipsOn(track->id)) {
             const Clip &clip = *clipPtr;
             if (clip.start >= g.total) continue;
-            const int idx = clipInput(g, project, clip, opts);
-            if (idx < 0) continue;
+            QString source;
+            if (clip.kind == ClipKind::Video)
+                source = g.takeBranch(g.videoBranches, clip.path);
+            if (source.isEmpty()) {
+                const int idx = clipInput(g, project, clip, opts);
+                if (idx < 0) continue;
+                source = QString("%1:v").arg(idx);
+            }
             const bool isText = clip.kind == ClipKind::Text;
             const QString label = QString("v%1").arg(n);
-            videoChain(g, project, clip, idx, isText, opts, label);
+            videoChain(g, project, clip, source, isText, opts, label);
 
             QString xExpr;
             QString yExpr;
@@ -259,14 +361,20 @@ QString buildFilterGraph(Graph &g, const Project &projectConst, const RenderOpti
         if (track.muted) continue;
         for (Clip *clipPtr : project.clipsOn(track.id)) {
             const Clip &clip = *clipPtr;
-            if (clip.mute || clip.kind == ClipKind::Image || clip.kind == ClipKind::Text) continue;
+            if (clip.mute || clip.kind == ClipKind::Image || clip.kind == ClipKind::Text
+                || clip.kind == ClipKind::Shape)
+                continue;
             if (clip.start >= g.total) continue;
             if (clip.path.isEmpty() || !QFileInfo::exists(clip.path)) continue;
             const MediaInfo info = MediaUtils::probe(clip.path);
             if (!info.hasAudio) continue;
-            const int idx = clipInput(g, project, clip, opts);
-            if (idx < 0) continue;
-            audioChain(g, clip, idx, QString("a%1").arg(a++));
+            QString source = g.takeBranch(g.audioBranches, clip.path);
+            if (source.isEmpty()) {
+                const int idx = clipInput(g, project, clip, opts);
+                if (idx < 0) continue;
+                source = QString("%1:a").arg(idx);
+            }
+            audioChain(g, clip, source, QString("a%1").arg(a++));
         }
     }
 
@@ -428,12 +536,24 @@ QString Renderer::textSequence(const Clip &clip, double fps, double duration)
 
     QDir().mkpath(dir);
     const double anim = qMin(textAnimationTime(), duration);
-    for (int i = 0; i < count; ++i) {
-        const double t = i / fps;
-        const double progress = anim > 0.01 ? qBound(0.0, t / anim, 1.0) : 1.0;
-        const QImage frame = textFrame(clip, progress);
+    // Only the intro needs distinct frames.  Rendering the whole clip (hundreds
+    // of PNGs) is what made export appear to hang before ffmpeg even started,
+    // so the tail reuses the final frame (a cheap file copy).
+    const int animCount = qMax(2, qMin(count, int(std::ceil(anim * fps))));
+    for (int i = 0; i < animCount; ++i) {
         const QString path = QString("%1/f%2.png").arg(dir).arg(i, 4, 10, QChar('0'));
+        if (QFileInfo::exists(path) && QFileInfo(path).size() > 0) continue;
+        const double t = i / fps;
+        const double progress = i == animCount - 1 ? 1.0
+                                                   : (anim > 0.01 ? qBound(0.0, t / anim, 1.0) : 1.0);
+        const QImage frame = textFrame(clip, progress);
         if (!frame.save(path, "PNG")) return {};
+    }
+    const QString last = QString("%1/f%2.png").arg(dir).arg(animCount - 1, 4, 10, QChar('0'));
+    for (int i = animCount; i < count; ++i) {
+        const QString path = QString("%1/f%2.png").arg(dir).arg(i, 4, 10, QChar('0'));
+        if (QFileInfo::exists(path) && QFileInfo(path).size() > 0) continue;
+        if (!QFile::copy(last, path)) return {};
     }
     return dir;
 }
@@ -450,6 +570,119 @@ QString Renderer::textPng(const Clip &clip)
                                                 QCryptographicHash::Sha1).toHex().left(16));
     const QString out = MediaUtils::cacheDir() + "/text_" + key + ".png";
     if (!QFileInfo::exists(out)) textFrame(clip, 1.0).save(out, "PNG");
+    return out;
+}
+
+QImage Renderer::shapeFrame(const Clip &clip)
+{
+    const int size = 512;
+    QImage img(size, size, QImage::Format_ARGB32_Premultiplied);
+    img.fill(Qt::transparent);
+
+    QPainter p(&img);
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    const double stroke = qBound(2.0, double(clip.shapeStroke), 90.0);
+    const double margin = stroke * 1.5 + 6.0;
+    const QRectF r(margin, margin, size - 2.0 * margin, size - 2.0 * margin);
+    const QString type = clip.shapeType;
+    const QColor color = QColor(clip.shapeColor).isValid() ? QColor(clip.shapeColor)
+                                                           : QColor("#ff3b46");
+
+    QPainterPath path;
+    QPolygonF head;
+    bool closed = false;
+
+    if (type == "circle") {
+        path.addEllipse(r);
+        closed = true;
+    } else if (type == "rect") {
+        const double radius = size * 0.055;
+        path.addRoundedRect(r, radius, radius);
+        closed = true;
+    } else if (type == "triangle") {
+        path.moveTo(r.center().x(), r.top());
+        path.lineTo(r.right(), r.bottom());
+        path.lineTo(r.left(), r.bottom());
+        path.closeSubpath();
+        closed = true;
+    } else if (type == "star") {
+        const QPointF c = r.center();
+        const double outer = qMin(r.width(), r.height()) / 2.0;
+        const double inner = outer * 0.42;
+        for (int i = 0; i < 10; ++i) {
+            const double angle = -1.5707963267948966 + i * 0.3141592653589793;
+            const double radius = (i % 2 == 0) ? outer : inner;
+            const QPointF pt(c.x() + radius * std::cos(angle), c.y() + radius * std::sin(angle));
+            if (i == 0) path.moveTo(pt); else path.lineTo(pt);
+        }
+        path.closeSubpath();
+        closed = true;
+    } else if (type == "line") {
+        path.moveTo(r.bottomLeft());
+        path.lineTo(r.topRight());
+    } else if (type == "check") {
+        path.moveTo(r.left() + r.width() * 0.08, r.top() + r.height() * 0.56);
+        path.lineTo(r.left() + r.width() * 0.40, r.top() + r.height() * 0.86);
+        path.lineTo(r.left() + r.width() * 0.94, r.top() + r.height() * 0.14);
+    } else if (type == "cross") {
+        path.moveTo(r.left() + r.width() * 0.10, r.top() + r.height() * 0.10);
+        path.lineTo(r.left() + r.width() * 0.90, r.top() + r.height() * 0.90);
+        path.moveTo(r.left() + r.width() * 0.90, r.top() + r.height() * 0.10);
+        path.lineTo(r.left() + r.width() * 0.10, r.top() + r.height() * 0.90);
+    } else { // arrow
+        const QPointF tail(r.left() + r.width() * 0.04, r.bottom() - r.height() * 0.04);
+        const QPointF tip(r.right() - r.width() * 0.02, r.top() + r.height() * 0.02);
+        path.moveTo(tail);
+        path.lineTo(tip);
+        const QPointF d = tip - tail;
+        const double len = std::hypot(d.x(), d.y());
+        if (len > 1.0) {
+            const QPointF u(d.x() / len, d.y() / len);
+            const QPointF n(-u.y(), u.x());
+            const double headLen = qMin(len * 0.5, qMax(stroke * 3.4, len * 0.26));
+            const double headWide = headLen * 0.82;
+            const QPointF base = tip - u * headLen;
+            head << tip << base + n * (headWide / 2.0) << base - n * (headWide / 2.0);
+        }
+    }
+
+    auto draw = [&](const QColor &penColor, double width, int fillAlpha) {
+        p.setPen(QPen(penColor, width, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        if (closed && fillAlpha > 0) {
+            QColor fill = color;
+            fill.setAlpha(fillAlpha);
+            p.setBrush(fill);
+        } else {
+            p.setBrush(Qt::NoBrush);
+        }
+        p.drawPath(path);
+        if (!head.isEmpty()) {
+            p.setBrush(penColor);
+            p.setPen(Qt::NoPen);
+            p.drawPolygon(head);
+        }
+    };
+
+    if (clip.shapeShadow)
+        draw(QColor(0, 0, 0, 115), stroke + qMax(6.0, stroke * 0.7), closed ? 55 : 0);
+    draw(color, stroke, clip.shapeFill ? 72 : 0);
+
+    p.end();
+    return img;
+}
+
+QString Renderer::shapePng(const Clip &clip)
+{
+    const QString key = QString::fromLatin1(QCryptographicHash::hash(
+                                                (clip.shapeType + "|" + clip.shapeColor + "|"
+                                                 + QString::number(clip.shapeStroke) + "|"
+                                                 + QString::number(int(clip.shapeFill)) + "|"
+                                                 + QString::number(int(clip.shapeShadow)))
+                                                    .toUtf8(),
+                                                QCryptographicHash::Sha1).toHex().left(16));
+    const QString out = MediaUtils::cacheDir() + "/shape_" + key + ".png";
+    if (!QFileInfo::exists(out)) shapeFrame(clip).save(out, "PNG");
     return out;
 }
 
@@ -528,7 +761,21 @@ void Renderer::start(const Project &project, const QString &outPath, const Rende
     m_cancelled = false;
     m_buffer.clear();
 
+    QElapsedTimer buildTimer;
+    buildTimer.start();
     QStringList args = buildCommand(project, outPath, opts, &m_total);
+    const QString debugDump = qEnvironmentVariable("VIDEOCUT_EXPORT_DEBUG");
+    if (!debugDump.isEmpty()) {
+        const QString summary = QString("inputs=%1 build_ms=%2\n")
+                                    .arg(args.count("-i"))
+                                    .arg(buildTimer.elapsed());
+        qWarning("export: %s", qPrintable(summary.trimmed()));
+        QFile dump(debugDump);
+        if (dump.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+            dump.write(summary.toUtf8());
+            dump.write(args.join('\n').toUtf8());
+        }
+    }
     const QString program = args.takeFirst();
 
     m_proc = new QProcess(this);

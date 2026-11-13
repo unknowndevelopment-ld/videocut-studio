@@ -348,9 +348,11 @@ void PropertiesPanel::buildClipForm()
                   : tr("%1 clip").arg(clip->kind == ClipKind::Video ? tr("Video")
                                          : clip->kind == ClipKind::Audio ? tr("Audio")
                                          : clip->kind == ClipKind::Image ? tr("Image")
+                                         : clip->kind == ClipKind::Shape ? tr("Shape")
                                                                          : tr("Text")));
 
     if (clip->kind == ClipKind::Text) buildTextForm(clip);
+    else if (clip->kind == ClipKind::Shape) buildShapeForm(clip);
     else {
         auto *name = new QLineEdit(clip->name);
         name->setAccessibleName(tr("Clip name"));
@@ -386,7 +388,8 @@ void PropertiesPanel::buildClipForm()
     addRow(tr("Duration"), dur);
     m_syncers.append([dur, this]() { if (first()) dur->setValue(first()->duration); });
 
-    if (clip->kind != ClipKind::Image && clip->kind != ClipKind::Text) {
+    if (clip->kind != ClipKind::Image && clip->kind != ClipKind::Text
+        && clip->kind != ClipKind::Shape) {
         auto *speed = new SliderRow(0.1, 8.0, 2, "x");
         speed->setValue(clip->speed);
         connect(speed, &SliderRow::valueChanged, this, [this](double v) {
@@ -429,7 +432,9 @@ void PropertiesPanel::buildClipForm()
             addRow(label, row);
             m_syncers.append([row, this, member]() { if (first()) row->setValue(first()->*member); });
         }
+    }
 
+    if (clip->kind != ClipKind::Audio && clip->kind != ClipKind::Shape) {
         addSection(tr("Colour & effects"));
 
         auto *look = new QComboBox;
@@ -530,6 +535,78 @@ void PropertiesPanel::buildClipForm()
         addRow(tr("Fade out"), fadeOut);
         m_syncers.append([fadeOut, this]() { if (first()) fadeOut->setValue(first()->fadeOut); });
     }
+}
+
+void PropertiesPanel::buildShapeForm(Clip *clip)
+{
+    addSection(tr("Shape"));
+    auto *type = new QComboBox;
+    type->setAccessibleName(tr("Shape type"));
+    const QVector<QPair<QString, QString>> kinds = {
+        {"arrow", tr("Arrow")},     {"circle", tr("Circle")}, {"rect", tr("Rectangle")},
+        {"line", tr("Line")},       {"triangle", tr("Triangle")}, {"star", tr("Star")},
+        {"check", tr("Check mark")}, {"cross", tr("Cross")},
+    };
+    for (const auto &k : kinds) {
+        type->addItem(Theme::icon(k.first, Theme::text(), Theme::px(16)), k.second, k.first);
+    }
+    type->setCurrentIndex(qMax(0, type->findData(clip->shapeType)));
+    connect(type, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, type](int) {
+        if (m_syncing) return;
+        const QString value = type->currentData().toString();
+        applyToClips(tr("Change shape"), "shapeType", [value](Clip &c) { c.shapeType = value; });
+    });
+    addRow(tr("Type"), type);
+    m_syncers.append([type, this]() {
+        if (!first()) return;
+        const int index = type->findData(first()->shapeType);
+        if (index >= 0 && index != type->currentIndex()) type->setCurrentIndex(index);
+    });
+
+    auto *color = new QPushButton(clip->shapeColor);
+    color->setAccessibleName(tr("Shape colour"));
+    auto styleColor = [color](const QString &c) {
+        color->setText(c);
+        color->setStyleSheet(QString("background:%1; color:%2; border:1px solid %3;"
+                                     " border-radius:7px; padding:5px;")
+                                 .arg(c, QColor(c).lightness() > 150 ? "#000" : "#fff",
+                                      Theme::border().name()));
+    };
+    styleColor(clip->shapeColor);
+    connect(color, &QPushButton::clicked, this, [this, color, styleColor]() {
+        const QColor chosen = QColorDialog::getColor(QColor(first()->shapeColor), this,
+                                                     tr("Shape colour"));
+        if (!chosen.isValid()) return;
+        const QString value = chosen.name();
+        styleColor(value);
+        applyToClips(tr("Change shape colour"), "shapeColor", [value](Clip &c) { c.shapeColor = value; });
+    });
+    addRow(tr("Colour"), color);
+
+    auto *thickness = new SliderRow(2, 64, 0, " px");
+    thickness->setValue(clip->shapeStroke);
+    connect(thickness, &SliderRow::valueChanged, this, [this](double v) {
+        applyToClips(tr("Change thickness"), "shapeStroke", [v](Clip &c) { c.shapeStroke = int(v); });
+    });
+    addRow(tr("Thickness"), thickness);
+    m_syncers.append([thickness, this]() { if (first()) thickness->setValue(first()->shapeStroke); });
+
+    auto *fill = new QCheckBox(tr("Fill"));
+    fill->setChecked(clip->shapeFill);
+    connect(fill, &QCheckBox::toggled, this, [this](bool on) {
+        applyToClips(tr("Toggle shape fill"), "shapeFill", [on](Clip &c) { c.shapeFill = on; });
+    });
+    addRow(tr("Fill"), fill);
+    m_syncers.append([fill, this]() { if (first()) fill->setChecked(first()->shapeFill); });
+
+    auto *shadow = new QCheckBox(tr("Shadow"));
+    shadow->setToolTip(tr("Dark edge so the shape stays readable on any footage"));
+    shadow->setChecked(clip->shapeShadow);
+    connect(shadow, &QCheckBox::toggled, this, [this](bool on) {
+        applyToClips(tr("Toggle shape shadow"), "shapeShadow", [on](Clip &c) { c.shapeShadow = on; });
+    });
+    addRow(tr("Edge"), shadow);
+    m_syncers.append([shadow, this]() { if (first()) shadow->setChecked(first()->shapeShadow); });
 }
 
 void PropertiesPanel::buildTextForm(Clip *clip)

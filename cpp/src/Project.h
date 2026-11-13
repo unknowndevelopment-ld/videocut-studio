@@ -14,7 +14,7 @@
 #include <algorithm>
 #include <cmath>
 
-enum class ClipKind { Video, Image, Audio, Text };
+enum class ClipKind { Video, Image, Audio, Text, Shape };
 
 inline QString kindName(ClipKind k)
 {
@@ -23,6 +23,7 @@ inline QString kindName(ClipKind k)
     case ClipKind::Image: return "image";
     case ClipKind::Audio: return "audio";
     case ClipKind::Text: return "text";
+    case ClipKind::Shape: return "shape";
     }
     return "video";
 }
@@ -32,6 +33,7 @@ inline ClipKind kindFromName(const QString &s)
     if (s == "image") return ClipKind::Image;
     if (s == "audio") return ClipKind::Audio;
     if (s == "text") return ClipKind::Text;
+    if (s == "shape") return ClipKind::Shape;
     return ClipKind::Video;
 }
 
@@ -84,6 +86,12 @@ struct Clip {
     double posX = 0.5;
     double posY = 0.5;
 
+    QString shapeType = "arrow";    // arrow | circle | rect | line | triangle | star | check | cross
+    QString shapeColor = "#ff3b46";
+    int shapeStroke = 16;           // thickness on the 512 px shape canvas
+    bool shapeFill = false;
+    bool shapeShadow = true;
+
     double end() const { return start + duration; }
     double srcOut() const { return srcIn + duration * std::max(0.01, speed); }
 
@@ -93,6 +101,7 @@ struct Clip {
             QString first = text.split('\n').value(0);
             return first.left(40);
         }
+        if (kind == ClipKind::Shape && name.isEmpty()) return shapeType;
         return name.isEmpty() ? path.section('/', -1) : name;
     }
 
@@ -136,6 +145,11 @@ struct Clip {
         o["textAnim"] = textAnim;
         o["posX"] = posX;
         o["posY"] = posY;
+        o["shapeType"] = shapeType;
+        o["shapeColor"] = shapeColor;
+        o["shapeStroke"] = shapeStroke;
+        o["shapeFill"] = shapeFill;
+        o["shapeShadow"] = shapeShadow;
         return o;
     }
 
@@ -179,6 +193,11 @@ struct Clip {
         c.textAnim = o.value("textAnim").toString("none");
         c.posX = o.value("posX").toDouble(0.5);
         c.posY = o.value("posY").toDouble(0.5);
+        c.shapeType = o.value("shapeType").toString("arrow");
+        c.shapeColor = o.value("shapeColor").toString("#ff3b46");
+        c.shapeStroke = o.value("shapeStroke").toInt(16);
+        c.shapeFill = o.value("shapeFill").toBool(false);
+        c.shapeShadow = o.value("shapeShadow").toBool(true);
         return c;
     }
 };

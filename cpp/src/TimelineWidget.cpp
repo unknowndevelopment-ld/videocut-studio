@@ -37,6 +37,7 @@ QColor clipColor(ClipKind kind)
     case ClipKind::Image: return QColor("#5e1b2e");
     case ClipKind::Audio: return QColor("#a8323f");
     case ClipKind::Text: return QColor("#c04a2e");
+    case ClipKind::Shape: return QColor("#b8441f");
     }
     return QColor("#8f1f2a");
 }
@@ -424,6 +425,10 @@ void TimelineWidget::drawClip(QPainter &p, const Clip &clip, const QRectF &rect,
         p.setFont(f);
         p.drawText(rect.adjusted(Theme::px(10), Theme::px(24), -Theme::px(8), 0),
                    Qt::AlignLeft | Qt::AlignTop, clip.text.left(120));
+    } else if (clip.kind == ClipKind::Shape) {
+        p.setPen(QColor(255, 255, 255, 90));
+        p.drawText(rect.adjusted(Theme::px(10), Theme::px(24), -Theme::px(8), 0),
+                   Qt::AlignLeft | Qt::AlignTop, clip.shapeType);
     }
 
     if (clip.fadeIn > 0.01) {

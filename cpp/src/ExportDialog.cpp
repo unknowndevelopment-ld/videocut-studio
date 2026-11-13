@@ -174,7 +174,8 @@ RenderOptions ExportDialog::options() const
     o.fps = (m_format->currentData().toString() == "gif") ? 15.0 : m_fps->currentData().toDouble();
     const int q = m_quality->value();
     o.crf = qBound(12, int(std::lround(34 - q * 2.2)), 34);
-    o.preset = q >= 7 ? "medium" : "faster";
+    // x264's slower presets buy very little at these CRFs but cost a lot of time.
+    o.preset = q >= 9 ? "medium" : q >= 6 ? "faster" : "veryfast";
     o.format = m_format->currentData().toString();
     return o;
 }
@@ -229,7 +230,7 @@ void ExportDialog::startExport()
     setBusy(true);
     m_progress->show();
     m_progress->setValue(0);
-    m_status->setText(tr("Starting ffmpeg…"));
+    m_status->setText(tr("Preparing timeline…"));
 
     m_renderer = new Renderer(this);
     connect(m_renderer, &Renderer::progress, this, [this](double done, double total) {
@@ -257,7 +258,12 @@ void ExportDialog::startExport()
         if (message != "Cancelled")
             QMessageBox::critical(this, tr("Export failed"), message.right(2000));
     });
-    m_renderer->start(m_project, m_output, options());
+    // Let the dialog repaint before the (short) graph build and process launch.
+    QTimer::singleShot(0, this, [this]() {
+        if (!m_renderer) return;
+        m_status->setText(tr("Starting ffmpeg…"));
+        m_renderer->start(m_project, m_output, options());
+    });
 }
 
 void ExportDialog::setBusy(bool busy)

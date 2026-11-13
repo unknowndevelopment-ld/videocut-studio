@@ -173,6 +173,8 @@ void PreviewEngine::rebuild()
         } else if (clip.kind == ClipKind::Image) {
             const QImage base(clip.path);
             layer->still = adjustImage(base, clip);
+        } else if (clip.kind == ClipKind::Shape) {
+            layer->still = Renderer::shapeFrame(clip);
         } else if (clip.kind == ClipKind::Video && !clip.path.isEmpty()) {
             if (!layer->player) createPlayer(layer);
         } else if (clip.kind == ClipKind::Audio && !clip.path.isEmpty()) {
@@ -335,7 +337,8 @@ void PreviewEngine::applyAudio(Layer *layer)
 {
     if (!layer->audio) return;
     const Clip &clip = layer->clip;
-    bool muted = clip.mute || clip.kind == ClipKind::Image || clip.kind == ClipKind::Text;
+    bool muted = clip.mute || clip.kind == ClipKind::Image || clip.kind == ClipKind::Text
+            || clip.kind == ClipKind::Shape;
     if (m_project) {
         if (Track *track = m_project->track(clip.track))
             if (track->muted) muted = true;
@@ -398,7 +401,8 @@ double PreviewEngine::fadeFactor(const Clip &clip, double t) const
 QImage PreviewEngine::layerImage(Layer *layer)
 {
     if (!layer) return {};
-    if (layer->clip.kind == ClipKind::Text || layer->clip.kind == ClipKind::Image)
+    if (layer->clip.kind == ClipKind::Text || layer->clip.kind == ClipKind::Image
+        || layer->clip.kind == ClipKind::Shape)
         return layer->still;
     if (!layer->hasFrame) return {};
     return adjustImage(layer->frame, layer->clip);
@@ -432,7 +436,7 @@ QImage PreviewEngine::composite(double t)
                 const double progress = clip.textAnim == "none"
                         ? 1.0 : qBound(0.0, (t - clip.start) / anim, 1.0);
                 image = progress >= 0.999 ? layer->still : Renderer::textFrame(clip, progress);
-            } else if (clip.kind == ClipKind::Image) {
+            } else if (clip.kind == ClipKind::Image || clip.kind == ClipKind::Shape) {
                 image = layer->still;
             } else if (layer->hasFrame) {
                 image = layer->frame;

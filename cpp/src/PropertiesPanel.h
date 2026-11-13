@@ -51,6 +51,7 @@ private:
     void buildProjectForm();
     void buildClipForm();
     void buildTextForm(Clip *clip);
+    void buildShapeForm(Clip *clip);
     void addHeader(const QString &text);
     void addSection(const QString &text);
     void addRow(const QString &label, QWidget *field);
