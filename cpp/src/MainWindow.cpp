@@ -1630,6 +1630,23 @@ void MainWindow::runSelfTest(const QString &outDir)
         log(QString("preview transform: scale %1 -> %2, rotation %3")
                 .arg(scaleBefore, 0, 'f', 2).arg(scaled, 0, 'f', 2)
                 .arg(target->rotation, 0, 'f', 1));
+
+        for (Clip &c : m_project.clips) {
+            if (c.kind != ClipKind::Text) continue;
+            m_timeline->selectIds({c.id});
+            const QVector<QPointF> textHandles = surface->handlesFor(c.id);
+            if (textHandles.size() != 5) break;
+            const double before = c.scale;
+            send(QEvent::MouseButtonPress, textHandles[2], Qt::LeftButton, Qt::LeftButton);
+            send(QEvent::MouseMove, textHandles[2] + QPointF(25, 25), Qt::NoButton, Qt::LeftButton);
+            send(QEvent::MouseButtonRelease, textHandles[2] + QPointF(25, 25),
+                 Qt::LeftButton, Qt::NoButton);
+            log(QString("preview transform (text): scale %1 -> %2")
+                    .arg(before, 0, 'f', 2).arg(c.scale, 0, 'f', 2));
+            break;
+        }
+        m_timeline->selectIds({target->id});
+
         for (const PreviewEngine::ClipBox &box : m_preview->engine()->clipBoxes(2.5)) {
             if (box.id != target->id) continue;
             log(QString("transform box: %1x%2 px, rotation %3")
