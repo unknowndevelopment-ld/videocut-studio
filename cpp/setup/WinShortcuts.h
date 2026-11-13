@@ -9,7 +9,8 @@ bool createShortcut(const QString &linkPath,
                     const QString &arguments,
                     const QString &workingDirectory,
                     const QString &description,
-                    const QString &iconPath);
+                    const QString &iconPath,
+                    const QString &appId = QString());
 
 QString startMenuDir();
 QString desktopDir();

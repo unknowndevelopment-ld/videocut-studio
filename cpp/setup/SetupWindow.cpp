@@ -31,6 +31,7 @@ const char *kAccent = "#ff3b46";
 const char *kText = "#f5f3f4";
 const char *kMuted = "#a89a9c";
 const char *kBorder = "#2e1519";
+const char *kAppId = "VideoCut.Studio";
 
 QString versionString()
 {
@@ -313,14 +314,27 @@ void SetupWindow::makeShortcuts()
 {
     const QString dir = installDir();
     const QString exe = dir + "/VideoCutStudio.exe";
-    const QString menu = WinShortcuts::startMenuDir() + "/VideoCut Studio.lnk";
-    WinShortcuts::createShortcut(menu, exe, QString(), dir,
-                                 tr("Free offline video editor"), exe);
+    const QString root = WinShortcuts::startMenuDir();
+    const QString folder = root + "/VideoCut Studio";
+    QDir().mkpath(folder);
+
+    // Start Menu folder, the way a normal Windows app installs itself: the app
+    // plus its own uninstall entry.
+    WinShortcuts::createShortcut(folder + "/VideoCut Studio.lnk", exe, QString(), dir,
+                                 tr("Free offline video editor"), exe, kAppId);
+    // Distinct AppUserModelID: sharing the app's ID would make Windows treat
+    // the two entries as one app and hide the launcher from the Start Menu.
+    WinShortcuts::createShortcut(folder + "/Uninstall VideoCut Studio.lnk",
+                                 dir + "/Uninstall.exe", QString(), dir,
+                                 tr("Remove VideoCut Studio from this PC"), exe,
+                                 QStringLiteral("VideoCut.Studio.Uninstall"));
+    // Single top-level shortcut from earlier versions.
+    QFile::remove(root + "/VideoCut Studio.lnk");
 
     if (m_desktop && m_desktop->isChecked()) {
         const QString desktop = WinShortcuts::desktopDir() + "/VideoCut Studio.lnk";
         WinShortcuts::createShortcut(desktop, exe, QString(), dir,
-                                     tr("Free offline video editor"), exe);
+                                     tr("Free offline video editor"), exe, kAppId);
     } else {
         QFile::remove(WinShortcuts::desktopDir() + "/VideoCut Studio.lnk");
     }
@@ -338,7 +352,8 @@ void SetupWindow::writeRegistry()
         uninstall.setValue("DisplayName", "VideoCut Studio");
         uninstall.setValue("DisplayVersion", m_version);
         uninstall.setValue("Publisher", "VideoCut");
-        uninstall.setValue("DisplayIcon", QDir::toNativeSeparators(exe));
+        uninstall.setValue("Comments", "Free offline video editor");
+        uninstall.setValue("DisplayIcon", "\"" + QDir::toNativeSeparators(exe) + "\",0");
         uninstall.setValue("InstallLocation", QDir::toNativeSeparators(dir));
         uninstall.setValue("UninstallString",
                            "\"" + QDir::toNativeSeparators(dir + "/Uninstall.exe") + "\"");
@@ -348,7 +363,46 @@ void SetupWindow::writeRegistry()
         uninstall.setValue("EstimatedSize", int(sizeKb));
         uninstall.setValue("NoModify", 1);
         uninstall.setValue("NoRepair", 1);
+#ifdef VIDEOCUT_UPDATE_REPO
+        const QString repo = QStringLiteral(VIDEOCUT_UPDATE_REPO);
+        if (repo.contains('/') && repo != QStringLiteral("OWNER/REPO")) {
+            const QString url = "https://github.com/" + repo;
+            uninstall.setValue("URLInfoAbout", url);
+            uninstall.setValue("HelpLink", url + "/issues");
+        }
+#endif
         uninstall.sync();
+    }
+    {
+        // Lets Windows treat VideoCut Studio as a normal installed application
+        // (Start Menu search, "Apps & features", Default apps, Open with).
+        QSettings caps("HKEY_CURRENT_USER\\Software\\VideoCut\\VideoCutStudio\\Capabilities",
+                       QSettings::NativeFormat);
+        caps.setValue("ApplicationName", "VideoCut Studio");
+        caps.setValue("ApplicationDescription", "Free offline video editor");
+        caps.setValue("ApplicationIcon", "\"" + QDir::toNativeSeparators(exe) + "\",0");
+        caps.setValue("FileAssociations/.vcs", "VideoCutStudio.Project");
+        caps.sync();
+
+        QSettings registered("HKEY_CURRENT_USER\\Software\\RegisteredApplications",
+                             QSettings::NativeFormat);
+        registered.setValue("VideoCut Studio", "Software\\VideoCut\\VideoCutStudio\\Capabilities");
+        registered.sync();
+
+        QSettings app("HKEY_CURRENT_USER\\Software\\Classes\\Applications\\VideoCutStudio.exe",
+                      QSettings::NativeFormat);
+        app.setValue("FriendlyAppName", "VideoCut Studio");
+        app.setValue("ApplicationCompany", "VideoCut");
+        app.setValue("SupportedTypes/.vcs", "");
+        app.sync();
+
+        // Right-click a video file -> Edit with VideoCut Studio.
+        QSettings shell("HKEY_CURRENT_USER\\Software\\Classes\\SystemFileAssociations\\video\\shell\\VideoCutStudio",
+                        QSettings::NativeFormat);
+        shell.setValue(".", "Edit with VideoCut Studio");
+        shell.setValue("Icon", "\"" + QDir::toNativeSeparators(exe) + "\",0");
+        shell.setValue("command/.", "\"" + QDir::toNativeSeparators(exe) + "\" \"%1\"");
+        shell.sync();
     }
     {
         QSettings ext("HKEY_CURRENT_USER\\Software\\Classes\\.vcs", QSettings::NativeFormat);

@@ -6,6 +6,8 @@
 #ifdef Q_OS_WIN
 #include <windows.h>
 #include <objbase.h>
+#include <propkey.h>
+#include <propsys.h>
 #include <shlobj.h>
 #endif
 
@@ -28,7 +30,7 @@ QString desktopDir()
 
 bool createShortcut(const QString &linkPath, const QString &targetPath, const QString &arguments,
                     const QString &workingDirectory, const QString &description,
-                    const QString &iconPath)
+                    const QString &iconPath, const QString &appId)
 {
 #ifdef Q_OS_WIN
     IShellLinkW *link = nullptr;
@@ -42,6 +44,22 @@ bool createShortcut(const QString &linkPath, const QString &targetPath, const QS
     link->SetDescription(reinterpret_cast<LPCWSTR>(description.utf16()));
     if (!iconPath.isEmpty())
         link->SetIconLocation(reinterpret_cast<LPCWSTR>(iconPath.utf16()), 0);
+
+    if (!appId.isEmpty()) {
+        // Same AppUserModelID as the process: the taskbar groups and pins the
+        // app like any store-installed one.
+        IPropertyStore *store = nullptr;
+        if (SUCCEEDED(link->QueryInterface(IID_IPropertyStore,
+                                           reinterpret_cast<void **>(&store)))) {
+            PROPVARIANT value;
+            PropVariantInit(&value);
+            value.vt = VT_LPWSTR;
+            value.pwszVal = const_cast<wchar_t *>(reinterpret_cast<LPCWSTR>(appId.utf16()));
+            store->SetValue(PKEY_AppUserModel_ID, value);
+            store->Commit();
+            store->Release();
+        }
+    }
 
     bool ok = false;
     IPersistFile *file = nullptr;
@@ -58,6 +76,7 @@ bool createShortcut(const QString &linkPath, const QString &targetPath, const QS
     Q_UNUSED(workingDirectory);
     Q_UNUSED(description);
     Q_UNUSED(iconPath);
+    Q_UNUSED(appId);
     return false;
 #endif
 }

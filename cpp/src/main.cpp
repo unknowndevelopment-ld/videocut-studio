@@ -11,11 +11,18 @@
 
 #ifdef Q_OS_WIN
 #include <windows.h>
+#include <shobjidl.h>
 #include <cstdio>
 #endif
 
 int main(int argc, char *argv[])
 {
+#ifdef Q_OS_WIN
+    // Must match the shortcut's AppUserModelID so the taskbar groups/pins the
+    // app like any other installed Windows application.
+    SetCurrentProcessExplicitAppUserModelID(L"VideoCut.Studio");
+#endif
+
     QStringList args;
     for (int i = 1; i < argc; ++i) args << QString::fromLocal8Bit(argv[i]);
 
@@ -35,7 +42,7 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     app.setApplicationName("VideoCut Studio");
     app.setOrganizationName("VideoCut");
-    app.setApplicationVersion("1.0.0");
+    app.setApplicationVersion(QStringLiteral(VIDEOCUT_VERSION));
     app.setStyle(QStyleFactory::create("Fusion"));
 
     QSettings settings("VideoCut", "VideoCutStudio");

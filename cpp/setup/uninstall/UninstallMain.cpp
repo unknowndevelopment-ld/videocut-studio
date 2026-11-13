@@ -59,9 +59,12 @@ void deleteShortcuts()
 {
     wchar_t appData[MAX_PATH] = {};
     if (GetEnvironmentVariableW(L"APPDATA", appData, MAX_PATH)) {
-        std::wstring link = std::wstring(appData)
-                + L"\\Microsoft\\Windows\\Start Menu\\Programs\\VideoCut Studio.lnk";
-        DeleteFileW(link.c_str());
+        const std::wstring programs = std::wstring(appData)
+                + L"\\Microsoft\\Windows\\Start Menu\\Programs";
+        // Start Menu folder (app + uninstall entry) and the single top-level
+        // shortcut used by older versions.
+        deleteTree(programs + L"\\VideoCut Studio");
+        DeleteFileW((programs + L"\\VideoCut Studio.lnk").c_str());
     }
     wchar_t profile[MAX_PATH] = {};
     if (GetEnvironmentVariableW(L"USERPROFILE", profile, MAX_PATH)) {
@@ -77,8 +80,19 @@ void deleteRegistry()
     RegDeleteTreeW(HKEY_CURRENT_USER, L"Software\\Classes\\VideoCutStudio.Project");
     RegDeleteTreeW(HKEY_CURRENT_USER,
                    L"Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\VideoCutStudio.exe");
+    RegDeleteTreeW(HKEY_CURRENT_USER,
+                   L"Software\\Classes\\Applications\\VideoCutStudio.exe");
+    RegDeleteTreeW(HKEY_CURRENT_USER,
+                   L"Software\\Classes\\SystemFileAssociations\\video\\shell\\VideoCutStudio");
     RegDeleteTreeW(HKEY_CURRENT_USER, L"Software\\VideoCut\\VideoCutStudio");
     RegDeleteTreeW(HKEY_CURRENT_USER, L"Software\\VideoCut");
+
+    HKEY registered = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\RegisteredApplications", 0,
+                      KEY_SET_VALUE, &registered) == ERROR_SUCCESS) {
+        RegDeleteValueW(registered, L"VideoCut Studio");
+        RegCloseKey(registered);
+    }
 
     // Only drop the .vcs association if it still points at us.
     HKEY key = nullptr;

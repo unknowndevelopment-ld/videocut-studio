@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(VideoCutStudio VERSION 1.4.1 LANGUAGES CXX)
+project(VideoCutStudio VERSION 1.4.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -26,6 +26,8 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/assets/app.rc.in
                ${CMAKE_CURRENT_BINARY_DIR}/app.rc @ONLY)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/setup/setup.rc.in
                ${CMAKE_CURRENT_BINARY_DIR}/setup.rc @ONLY)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/setup/uninstall.rc.in
+               ${CMAKE_CURRENT_BINARY_DIR}/uninstall.rc @ONLY)
 
 qt_add_executable(VideoCutStudio WIN32
     src/main.cpp
@@ -57,6 +59,7 @@ target_link_libraries(VideoCutStudio PRIVATE
     Qt6::Multimedia
     Qt6::MultimediaWidgets
     Qt6::Network
+    shell32
 )
 
 if (MSVC)
@@ -77,11 +80,15 @@ qt_add_executable(VideoCutSetup WIN32
     ${CMAKE_CURRENT_BINARY_DIR}/setup.rc
 )
 target_include_directories(VideoCutSetup PRIVATE setup)
-target_compile_definitions(VideoCutSetup PRIVATE VIDEOCUT_VERSION="${APP_VERSION}")
-target_link_libraries(VideoCutSetup PRIVATE Qt6::Widgets)
+target_compile_definitions(VideoCutSetup PRIVATE
+    VIDEOCUT_VERSION="${APP_VERSION}"
+    VIDEOCUT_UPDATE_REPO="${VIDEOCUT_UPDATE_REPO}"
+)
+target_link_libraries(VideoCutSetup PRIVATE Qt6::Widgets shell32 ole32 propsys)
 set_target_properties(VideoCutSetup PROPERTIES OUTPUT_NAME "VideoCutSetup")
 
-add_executable(VideoCutUninstall WIN32 setup/uninstall/UninstallMain.cpp)
+add_executable(VideoCutUninstall WIN32 setup/uninstall/UninstallMain.cpp
+               ${CMAKE_CURRENT_BINARY_DIR}/uninstall.rc)
 target_link_libraries(VideoCutUninstall PRIVATE shell32 advapi32 user32)
 set_target_properties(VideoCutUninstall PROPERTIES OUTPUT_NAME "Uninstall")
 if (MINGW)
