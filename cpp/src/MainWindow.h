@@ -17,6 +17,7 @@ class QAction;
 class QPushButton;
 class QSplitter;
 class QMenu;
+class QTimer;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -25,6 +26,7 @@ public:
 
     void openFiles(const QStringList &paths);
     bool openProjectFile(const QString &path);
+    void checkRecovery();
     void runSelfTest(const QString &outDir);
 
 protected:
@@ -53,7 +55,11 @@ private:
     bool saveProject();
     bool saveProjectAs();
     bool maybeSave();
-    void loadProject(Project project, const QString &path);
+    void loadProject(Project project, const QString &path, bool recovered = false);
+    QString recoveryPath() const;
+    void scheduleAutosave();
+    void writeAutosave();
+    void clearRecovery();
     void importMedia();
     void exportVideo();
 
@@ -120,6 +126,9 @@ private:
     QAction *m_actionUndo = nullptr;
     QAction *m_actionRedo = nullptr;
     Updater *m_updater = nullptr;
+    QTimer *m_autosave = nullptr;
+    bool m_autosaved = false;
+    bool m_recoveryHandled = false;
     bool m_checkInteractive = false;
     QString m_updateUrl;
     QString m_updateVersion;

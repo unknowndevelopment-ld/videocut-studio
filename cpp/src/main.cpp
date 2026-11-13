@@ -3,11 +3,14 @@
 #include "Theme.h"
 
 #include <QApplication>
+#include <QDateTime>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QIcon>
 #include <QSettings>
 #include <QStyleFactory>
+#include <QTimer>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -15,8 +18,28 @@
 #include <cstdio>
 #endif
 
+namespace {
+
+// Set VIDEOCUT_LOG_FILE to keep a timestamped log next to a crash report.
+void logToFile(QtMsgType, const QMessageLogContext &, const QString &message)
+{
+    const QString path = qEnvironmentVariable("VIDEOCUT_LOG_FILE");
+    if (path.isEmpty()) return;
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) return;
+    file.write(QDateTime::currentDateTime().toString(Qt::ISODateWithMs).toUtf8());
+    file.write("  ");
+    file.write(message.toUtf8());
+    file.write("\n");
+}
+
+} // namespace
+
 int main(int argc, char *argv[])
 {
+    if (!qEnvironmentVariable("VIDEOCUT_LOG_FILE").isEmpty())
+        qInstallMessageHandler(logToFile);
+
 #ifdef Q_OS_WIN
     // Must match the shortcut's AppUserModelID so the taskbar groups/pins the
     // app like any other installed Windows application.
@@ -65,10 +88,22 @@ int main(int argc, char *argv[])
     window.show();
 
     QStringList files;
+    QString projectToOpen;
     for (const QString &a : args) {
-        if (!a.startsWith("--") && QFileInfo::exists(a) && MediaUtils::isMediaFile(a)) files << a;
+        if (a.startsWith("--") || !QFileInfo::exists(a)) continue;
+        if (a.endsWith(".vcs", Qt::CaseInsensitive)) projectToOpen = a;
+        else if (MediaUtils::isMediaFile(a)) files << a;
     }
-    if (!files.isEmpty()) window.openFiles(files);
+
+    if (!projectToOpen.isEmpty()) {
+        window.openProjectFile(projectToOpen);
+    } else {
+        if (!files.isEmpty()) window.openFiles(files);
+        if (!selfTest && files.isEmpty()) {
+            // Give the window a moment to appear, then offer crash recovery.
+            QTimer::singleShot(400, &window, [&window]() { window.checkRecovery(); });
+        }
+    }
 
     if (selfTest) {
         QString outDir;

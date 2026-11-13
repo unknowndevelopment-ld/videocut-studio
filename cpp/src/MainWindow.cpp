@@ -18,6 +18,7 @@
 #include <QApplication>
 #include <QCloseEvent>
 #include <QComboBox>
+#include <QDateTime>
 #include <QDesktopServices>
 #include <QDialog>
 #include <QDir>
@@ -43,6 +44,7 @@
 #include <QProgressDialog>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QSaveFile>
 #include <QScrollBar>
 #include <QSettings>
 #include <QSplitter>
@@ -191,6 +193,11 @@ MainWindow::MainWindow(QWidget *parent)
     if (m_project.clips.isEmpty()) {
         announce(tr("Ready. Press Ctrl+I to import a video."));
     }
+
+    m_autosave = new QTimer(this);
+    m_autosave->setSingleShot(true);
+    m_autosave->setInterval(2500);
+    connect(m_autosave, &QTimer::timeout, this, &MainWindow::writeAutosave);
 
     m_updater = new Updater(this);
     connect(m_updater, &Updater::upToDate, this, [this]() {
@@ -722,9 +729,61 @@ void MainWindow::pushUndo(const QString &label, const QString &key)
 
 void MainWindow::markDirty()
 {
-    if (m_dirty) return;
-    m_dirty = true;
-    updateTitle();
+    if (!m_dirty) {
+        m_dirty = true;
+        updateTitle();
+    }
+    scheduleAutosave();
+}
+
+QString MainWindow::recoveryPath() const
+{
+    const QString override = qEnvironmentVariable("VIDEOCUT_RECOVERY_FILE");
+    if (!override.isEmpty()) return override;
+    return MediaUtils::appDataDir() + "/recovery.json";
+}
+
+void MainWindow::scheduleAutosave()
+{
+    if (!m_autosave) return;
+    if (qApp->arguments().contains("--selftest")) return;
+    if (m_project.clips.isEmpty() && m_projectPath.isEmpty()) return;
+    m_autosave->start();
+}
+
+void MainWindow::writeAutosave()
+{
+    if (!m_dirty) return;
+
+    QJsonObject root;
+    root["format"] = "videocut-studio-recovery";
+    root["version"] = 1;
+    root["saved"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    root["originalPath"] = m_projectPath;
+    root["project"] = m_project.toJson();
+
+    const QString path = recoveryPath();
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) return;
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    if (file.commit()) m_autosaved = true;
+    if (m_autosaved && m_status) {
+        // Quiet update: no accessibility alert on every autosave.
+        m_status->setText(tr("Auto-saved at %1").arg(QTime::currentTime().toString("HH:mm")));
+    }
+}
+
+void MainWindow::clearRecovery()
+{
+    if (m_autosave) m_autosave->stop();
+    // Never delete a recovery file this session never wrote or handled: it may
+    // belong to an earlier crash the user has not been asked about yet.
+    if (!m_autosaved && !m_recoveryHandled) return;
+    const QString path = recoveryPath();
+    if (!path.isEmpty()) QFile::remove(path);
+    m_autosaved = false;
+    m_recoveryHandled = false;
 }
 
 void MainWindow::updateTitle()
@@ -1079,6 +1138,7 @@ void MainWindow::redo()
 
 void MainWindow::afterHistory(const QString &label, const QString &verb)
 {
+    markDirty();
     m_properties->setProject(&m_project);
     m_mediaBin->setProject(&m_project);
     m_timeline->clearSelection();
@@ -1104,18 +1164,69 @@ bool MainWindow::maybeSave()
     return answer == QMessageBox::Discard;
 }
 
+void MainWindow::checkRecovery()
+{
+    if (qApp->arguments().contains("--selftest")) return;
+
+    const QString path = recoveryPath();
+    if (!QFileInfo::exists(path)) return;
+    m_recoveryHandled = true;
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) return;
+    QJsonParseError error{};
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &error);
+    file.close();
+    if (error.error != QJsonParseError::NoError || !doc.isObject()) {
+        QFile::remove(path);
+        return;
+    }
+
+    const QJsonObject root = doc.object();
+    if (root.value("format").toString() != QStringLiteral("videocut-studio-recovery")) {
+        QFile::remove(path);
+        return;
+    }
+
+    Project project = Project::fromJson(root.value("project").toObject());
+    const QString original = root.value("originalPath").toString();
+    const QDateTime saved = QDateTime::fromString(root.value("saved").toString(), Qt::ISODate);
+    const QString when = saved.isValid() ? saved.toLocalTime().toString("yyyy-MM-dd HH:mm")
+                                         : tr("the last session");
+
+    QMessageBox box(this);
+    box.setWindowTitle(tr("Recover unsaved work"));
+    box.setIcon(QMessageBox::Question);
+    box.setText(tr("VideoCut Studio did not close normally."));
+    box.setInformativeText(tr("Recover the unsaved project \"%1\" from %2?")
+                               .arg(project.name.isEmpty() ? tr("Untitled") : project.name, when));
+    QPushButton *recover = box.addButton(tr("Recover"), QMessageBox::AcceptRole);
+    box.setDefaultButton(recover);
+    box.addButton(tr("Discard"), QMessageBox::DestructiveRole);
+    box.exec();
+
+    if (box.clickedButton() != recover) {
+        QFile::remove(path);
+        announce(tr("Discarded the autosaved project"));
+        return;
+    }
+
+    loadProject(project, original, true);
+    announce(tr("Recovered the autosaved project"));
+}
+
 void MainWindow::newProject()
 {
     if (!maybeSave()) return;
     loadProject(Project::createDefault(), QString());
 }
 
-void MainWindow::loadProject(Project project, const QString &path)
+void MainWindow::loadProject(Project project, const QString &path, bool recovered)
 {
     m_project = project;
     m_projectPath = path;
     m_history.setProject(&m_project);
-    m_dirty = false;
+    m_dirty = recovered;
     m_timeline->setProject(&m_project);
     m_timeline->zoomFit();
     m_mediaBin->setProject(&m_project);
@@ -1127,6 +1238,8 @@ void MainWindow::loadProject(Project project, const QString &path)
     m_preview->setTimeLabel(0);
     if (m_project.clips.isEmpty()) m_preview->showMessage(tr("Nothing to preview yet"));
     if (m_clipList) m_clipList->setProject(m_project);
+    if (recovered) scheduleAutosave();
+    else clearRecovery();
     updateTitle();
     updateStatus();
     updateActions();
@@ -1164,6 +1277,7 @@ bool MainWindow::saveProject()
         return false;
     }
     m_dirty = false;
+    clearRecovery();
     updateTitle();
     announce(tr("Saved %1").arg(QFileInfo(m_projectPath).fileName()));
     return true;
@@ -1355,6 +1469,8 @@ void MainWindow::closeEvent(QCloseEvent *event)
     }
     m_preview->engine()->pause();
     saveSettings();
+    // Reached only on a clean exit: nothing left to recover.
+    clearRecovery();
     QMainWindow::closeEvent(event);
 }
 
@@ -1591,7 +1707,7 @@ void MainWindow::runSelfTest(const QString &outDir)
     log(QString("project loaded: %1 clips, %2s").arg(m_project.clips.size())
             .arg(m_project.duration(), 0, 'f', 2));
 
-    QTimer::singleShot(1200, this, [this, log]() {
+    QTimer::singleShot(1200, this, [this, outDir, log]() {
         m_timeline->setPlayhead(2.5);
         onSeek(2.5);
         log(QString("preview frame ready at 2.5s, size %1x%2")
@@ -1653,6 +1769,22 @@ void MainWindow::runSelfTest(const QString &outDir)
                     .arg(box.rect.width(), 0, 'f', 0).arg(box.rect.height(), 0, 'f', 0)
                     .arg(box.rotation, 0, 'f', 1));
         }
+
+        const QByteArray previousRecovery = qgetenv("VIDEOCUT_RECOVERY_FILE");
+        const QString probe = outDir + "/recovery_probe.json";
+        qputenv("VIDEOCUT_RECOVERY_FILE", QFile::encodeName(probe));
+        writeAutosave();
+        int recoveredClips = -1;
+        QFile recovered(probe);
+        if (recovered.open(QIODevice::ReadOnly)) {
+            const QJsonDocument doc = QJsonDocument::fromJson(recovered.readAll());
+            recoveredClips = Project::fromJson(doc.object().value("project").toObject()).clips.size();
+        }
+        log(QString("autosave: %1 bytes, %2 clips round-tripped")
+                .arg(QFileInfo(probe).size()).arg(recoveredClips));
+        QFile::remove(probe);
+        if (previousRecovery.isEmpty()) qunsetenv("VIDEOCUT_RECOVERY_FILE");
+        else qputenv("VIDEOCUT_RECOVERY_FILE", previousRecovery);
     });
     QTimer::singleShot(3000, this, [this, outDir, log]() {
         grab().save(outDir + "/screenshot_paused.png");

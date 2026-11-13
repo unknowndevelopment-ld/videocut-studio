@@ -5,7 +5,7 @@ composited preview, no account, no watermark, no upload.
 
 **Repository:** https://github.com/unknowndevelopment-ld/videocut-studio
 
-**Install:** run `VideoCutStudio-Setup-1.4.2.exe` â€” a single branded installer
+**Install:** run `VideoCutStudio-Setup-1.4.3.exe` â€” a single branded installer
 with no wizard and no MSI. It installs per-user (no UAC prompt) and adds the
 Start Menu entry, desktop shortcut, `.vcs` association and an "Apps & features"
 entry.
@@ -70,6 +70,13 @@ ffmpeg is warmed in the background at launch, so the wait before the progress
 bar moves is short even on a long timeline.
 
 **Projects** â€” `.vcs` JSON, undo/redo on everything, remembered window layout.
+Double-clicking a `.vcs` file opens it in the editor.
+
+**Autosave & crash recovery** - the project is written to
+`%LOCALAPPDATA%\VideoCutStudio\recovery.json` about two seconds after you stop
+editing. If the app is killed or crashes, the next launch offers to recover
+that state (or discard it); the autosave is deleted as soon as you save or exit
+normally.
 
 ## Accessibility
 
@@ -132,7 +139,7 @@ progress bar, and a "Launch" button when it's done. Details:
   and "Uninstall VideoCut Studio", an optional desktop shortcut, a `.vcs` file
   association, "Edit with VideoCut Studio" in the right-click menu for videos,
   `AppPaths`, Default-apps registration and an **Apps & features** entry.
-- Silent/upgrade mode: `VideoCutStudio-Setup-1.4.2.exe --silent` (used by the 
+- Silent/upgrade mode: `VideoCutStudio-Setup-1.4.3.exe --silent` (used by the 
   built-in updater).
 - Uninstall from **Settings -> Apps**, the Start Menu entry, or
   `Uninstall.exe /S`. Shortcuts, registry entries and the install folder are
@@ -150,7 +157,7 @@ The app updates itself from GitHub Releases:
    ```
    That produces `dist-cpp\VideoCutStudio-Setup-<version>.exe` and `update.json`
    (version, size, SHA-256).
-3. Tag and push: `git tag v1.4.2; git push --tags`. The workflow in 
+3. Tag and push: `git tag v1.4.3; git push --tags`. The workflow in 
    `.github/workflows/release.yml` builds on `windows-latest` and attaches the
    installer + `update.json` to the release.
 4. Installed copies check `https://api.github.com/repos/<repo>/releases/latest`
