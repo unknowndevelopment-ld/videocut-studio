@@ -57,13 +57,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist-cpp/VideoCutStudio-*-x64.msi
+            dist-cpp/VideoCutStudio-Setup-*.exe
             dist-cpp/update.json
           generate_release_notes: true
           draft: false
 
-      - name: Keep the MSI as a build artifact
+      - name: Keep the installer as a build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VideoCutStudio-msi
-          path: dist-cpp/VideoCutStudio-*-x64.msi
+          name: VideoCutStudio-setup
+          path: dist-cpp/VideoCutStudio-Setup-*.exe

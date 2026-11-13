@@ -5,9 +5,10 @@ composited preview, no account, no watermark, no upload.
 
 **Repository:** https://github.com/unknowndevelopment-ld/videocut-studio
 
-**Install:** run `VideoCutStudio-1.2.0-x64.msi` from `dist-cpp\` — it adds a Start
-Menu entry, a desktop shortcut, file association for `.vcs` projects, an
-"Apps & features" entry, and installs to `C:\Program Files\VideoCut Studio`.
+**Install:** run `VideoCutStudio-Setup-1.3.0.exe` — a single branded installer
+with no wizard and no MSI. It installs per-user (no UAC prompt) and adds the
+Start Menu entry, desktop shortcut, `.vcs` association and an "Apps & features"
+entry.
 
 **Run without installing:** `dist-cpp\VideoCutStudio\VideoCutStudio.exe`
 (copy the whole folder if you move it — Qt and ffmpeg live beside the exe)
@@ -102,19 +103,21 @@ The preview is built to stay at 30 fps rather than look pretty and stutter:
 ## Install
 
 ```
-VideoCutStudio-<version>-x64.msi      ← double-click, accept the licence, done
+VideoCutStudio-Setup-<version>.exe     ← double-click, accept the terms, Install
 ```
 
-The package installs per machine (UAC prompt), and adds:
+A custom installer, not an MSI: one dark window with the app's branding, a
+progress bar, and a "Launch" button when it's done. Details:
 
-- `C:\Program Files\VideoCut Studio\` with the editor, Qt runtime, ffmpeg and `legal\`
-- Start Menu → VideoCut Studio, plus a desktop shortcut
-- an **Apps & features** entry (icon, version, support link)
-- `.vcs` file association and an `App Paths` entry, so `VideoCutStudio` works
-  from Win+R / the Run dialog
-
-Uninstall from **Settings → Apps**; your projects and settings are left alone.
-Silent install: `msiexec /i VideoCutStudio-1.2.0-x64.msi /qn`.
+- **Per-user** install to `%LOCALAPPDATA%\Programs\VideoCut Studio` — **no UAC**,
+  no admin rights.
+- Adds Start Menu + desktop shortcuts, a `.vcs` file association, an `AppPaths`
+  entry and an **Apps & features** entry with its own uninstaller.
+- Silent/upgrade mode: `VideoCutStudio-Setup-1.3.0.exe --silent` (used by the
+  built-in updater).
+- Uninstall from **Settings → Apps** (or `Uninstall.exe /S` in the install
+  folder); projects and settings are left alone.
+- The installer carries everything: Qt runtime, ffmpeg and the legal docs.
 
 ## Releasing & updates
 
@@ -125,21 +128,21 @@ The app updates itself from GitHub Releases:
    ```powershell
    .\package.ps1 -Repo "unknowndevelopment-ld/videocut-studio"
    ```
-   That produces `dist-cpp\VideoCutStudio-<version>-x64.msi` and `update.json`
+   That produces `dist-cpp\VideoCutStudio-Setup-<version>.exe` and `update.json`
    (version, size, SHA-256).
-3. Tag and push: `git tag v1.2.0; git push --tags`. The workflow in
+3. Tag and push: `git tag v1.3.0; git push --tags`. The workflow in
    `.github/workflows/release.yml` builds on `windows-latest` and attaches the
-   MSI + `update.json` to the release.
+   installer + `update.json` to the release.
 4. Installed copies check `https://api.github.com/repos/<repo>/releases/latest`
    nine seconds after launch (and from **Help → Check for updates**). A newer
-   version offers a one-click download; the app then hands the MSI to
-   `msiexec` and closes so the upgrade can finish.
+   version offers a one-click download, then the app closes and the Setup.exe
+   runs in `--silent` mode to install it.
 
 No feed is configured until you pass `-Repo`, so a plain build never phones
-home. **Code signing:** the MSI is unsigned by default — sign it with
-`signtool sign /fd sha256 /tr <timestamp-url> /td sha256 <msi>` (and the exe)
-with an EV/OV certificate before publishing, or SmartScreen will warn on first
-run.
+home. **Code signing:** the installer is unsigned by default — sign it with
+`signtool sign /fd sha256 /tr <timestamp-url> /td sha256 <exe>` (the Setup.exe
+and the app exe inside) with an EV/OV certificate before publishing, or
+SmartScreen will warn on first run.
 
 ## Legal
 
@@ -148,7 +151,7 @@ run.
 - `legal/PRIVACY.md` — no accounts, no telemetry, local-only processing
 - `legal/THIRD-PARTY.md` — Qt (LGPL-3), ffmpeg (GPL-3), MinGW runtime
 
-The same documents are installed in `Program Files\VideoCut Studio\legal` and
+The same documents are installed in `%LOCALAPPDATA%\Programs\VideoCut Studio\legal` and
 open from **Help → Terms of Service / Privacy Policy / Third-party notices**.
 
 ## Build it yourself

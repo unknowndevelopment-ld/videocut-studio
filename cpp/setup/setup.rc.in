@@ -1,0 +1,29 @@
+#include <windows.h>
+
+IDI_ICON1 ICON "@APP_ICON@"
+
+1 VERSIONINFO
+FILEVERSION @APP_VERSION_COMMA@
+PRODUCTVERSION @APP_VERSION_COMMA@
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName", "VideoCut"
+            VALUE "FileDescription", "VideoCut Studio Setup"
+            VALUE "FileVersion", "@APP_VERSION@"
+            VALUE "InternalName", "VideoCutSetup"
+            VALUE "LegalCopyright", "Copyright (C) 2026 VideoCut"
+            VALUE "OriginalFilename", "VideoCutSetup.exe"
+            VALUE "ProductName", "VideoCut Studio"
+            VALUE "ProductVersion", "@APP_VERSION@"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

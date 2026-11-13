@@ -226,8 +226,7 @@ MainWindow::MainWindow(QWidget *parent)
                        "The editor will close and the installer will finish the update.").arg(version),
                     QMessageBox::Ok | QMessageBox::Cancel, QMessageBox::Ok);
                 if (answer != QMessageBox::Ok) return;
-                QProcess::startDetached("msiexec.exe", {"/i", QDir::toNativeSeparators(file),
-                                                        "/passive", "/norestart"});
+                QProcess::startDetached(file, {"/silent"});
                 m_dirty = false;
                 qApp->quit();
             });

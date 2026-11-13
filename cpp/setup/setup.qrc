@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/">
+        <file alias="logo.png">../assets/videocut.ico</file>
+    </qresource>
+</RCC>

@@ -108,7 +108,7 @@ void Updater::check(bool interactive)
         for (const auto &value : release.value("assets").toArray()) {
             const QJsonObject asset = value.toObject();
             const QString name = asset.value("name").toString();
-            if (!name.endsWith(".msi", Qt::CaseInsensitive)) continue;
+            if (!name.endsWith(".exe", Qt::CaseInsensitive)) continue;
             if (url.isEmpty() || name.contains("x64", Qt::CaseInsensitive)) {
                 url = asset.value("browser_download_url").toString();
                 if (name.contains("x64", Qt::CaseInsensitive)) break;
@@ -133,7 +133,7 @@ void Updater::download(const QString &url, const QString &version)
     m_pendingVersion = version;
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
     QDir().mkpath(dir);
-    const QString path = dir + "/VideoCutStudio-" + version + "-update.msi";
+    const QString path = dir + "/VideoCutStudio-Setup-" + version + ".exe";
     m_file = new QFile(path);
     if (!m_file->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         emit failed(tr("Could not write to %1").arg(path));

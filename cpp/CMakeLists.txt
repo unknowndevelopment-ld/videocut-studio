@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(VideoCutStudio VERSION 1.2.0 LANGUAGES CXX)
+project(VideoCutStudio VERSION 1.3.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -24,6 +24,8 @@ endif()
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/assets/app.rc.in
                ${CMAKE_CURRENT_BINARY_DIR}/app.rc @ONLY)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/setup/setup.rc.in
+               ${CMAKE_CURRENT_BINARY_DIR}/setup.rc @ONLY)
 
 qt_add_executable(VideoCutStudio WIN32
     src/main.cpp
@@ -61,6 +63,37 @@ if (MSVC)
     target_compile_options(VideoCutStudio PRIVATE /W3 /utf-8)
 else()
     target_compile_options(VideoCutStudio PRIVATE -Wall -Wextra -Wno-unused-parameter)
+endif()
+
+# ---------------------------------------------------------------------------
+# Custom installer (no MSI): branded setup app + tiny uninstaller
+# ---------------------------------------------------------------------------
+qt_add_executable(VideoCutSetup WIN32
+    setup/SetupMain.cpp
+    setup/SetupWindow.cpp
+    setup/Payload.cpp
+    setup/WinShortcuts.cpp
+    setup/setup.qrc
+    ${CMAKE_CURRENT_BINARY_DIR}/setup.rc
+)
+target_include_directories(VideoCutSetup PRIVATE setup)
+target_compile_definitions(VideoCutSetup PRIVATE VIDEOCUT_VERSION="${APP_VERSION}")
+target_link_libraries(VideoCutSetup PRIVATE Qt6::Widgets)
+set_target_properties(VideoCutSetup PROPERTIES OUTPUT_NAME "VideoCutSetup")
+
+add_executable(VideoCutUninstall WIN32 setup/uninstall/UninstallMain.cpp)
+target_link_libraries(VideoCutUninstall PRIVATE shell32 advapi32 user32)
+set_target_properties(VideoCutUninstall PROPERTIES OUTPUT_NAME "Uninstall")
+if (MINGW)
+    target_link_options(VideoCutUninstall PRIVATE -static-libgcc -static-libstdc++ -static)
+endif()
+
+# Native launcher that carries the whole installer in one file.
+add_executable(VideoCutStub WIN32 setup/stub/StubMain.cpp)
+target_link_libraries(VideoCutStub PRIVATE shell32)
+set_target_properties(VideoCutStub PROPERTIES OUTPUT_NAME "SetupStub")
+if (MINGW)
+    target_link_options(VideoCutStub PRIVATE -static-libgcc -static-libstdc++ -static)
 endif()
 
 # Copy ffmpeg next to the binary so a dev build works out of the box.
