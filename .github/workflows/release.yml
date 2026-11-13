@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  windows-msi:
+  windows-installer:
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -30,15 +30,6 @@ jobs:
           python -m aqt install-tool windows desktop tools_cmake --outputdir C:\Qt
           python -m aqt install-tool windows desktop tools_ninja --outputdir C:\Qt
 
-      - name: WiX 3
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force tools\wix | Out-Null
-          Invoke-WebRequest `
-            -Uri https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip `
-            -OutFile wix.zip
-          Expand-Archive wix.zip -DestinationPath tools\wix -Force
-
       - name: ffmpeg
         shell: pwsh
         run: |
@@ -49,7 +40,7 @@ jobs:
           Copy-Item "$($bin.FullName)\bin\ffmpeg.exe"  vendor\ffmpeg\
           Copy-Item "$($bin.FullName)\bin\ffprobe.exe" vendor\ffmpeg\
 
-      - name: Build + package MSI
+      - name: Build + package installer
         shell: pwsh
         run: .\package.ps1 -Repo "${{ github.repository }}"
 

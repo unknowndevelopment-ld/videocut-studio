@@ -10,7 +10,7 @@ installer/obj/
 *.wixpdb
 
 # bundled tooling
-tools/
+tools/wix/
 vendor/ffmpeg/
 legacy/
 
