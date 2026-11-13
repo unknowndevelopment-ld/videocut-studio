@@ -1,9 +1,11 @@
 #include "SetupWindow.h"
 
 #include <QApplication>
+#include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
 #include <QIcon>
+#include <QTimer>
 
 int main(int argc, char *argv[])
 {
@@ -22,6 +24,17 @@ int main(int argc, char *argv[])
 
     SetupWindow window(payloadPath);
     if (args.contains("--silent")) return window.runSilent();
+
+    if (args.contains("--screenshot")) {
+        window.show();
+        const int index = args.indexOf("--screenshot");
+        const QString path = (index + 1 < args.size()) ? args[index + 1] : QString("setup.png");
+        QTimer::singleShot(700, &window, [&window, path]() {
+            window.grab().save(path);
+            QCoreApplication::quit();
+        });
+        return app.exec();
+    }
 
     window.show();
     return app.exec();
