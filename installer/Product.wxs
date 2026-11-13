@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+
+  <?define UpgradeCode = "{7C3B2E5A-9D41-4C8B-A6F2-1E9D5B7C3A10}" ?>
+
+  <Product Id="*"
+           Name="VideoCut Studio"
+           Language="1033"
+           Version="$(var.ProductVersion)"
+           Manufacturer="VideoCut"
+           UpgradeCode="$(var.UpgradeCode)">
+
+    <Package InstallerVersion="500"
+             Compressed="yes"
+             InstallScope="perMachine"
+             Platform="x64"
+             Description="VideoCut Studio - free offline video editor"
+             Comments="https://github.com/$(var.Repo)" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of VideoCut Studio is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="AppIcon" SourceFile="$(var.SourceDir)\app.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/$(var.Repo)" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/$(var.Repo)" />
+    <Property Id="ARPCONTACT" Value="https://github.com/$(var.Repo)/issues" />
+
+
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.SourceDir)\legal\EULA.rtf" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLDIR" Name="VideoCut Studio" />
+      </Directory>
+
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ProgramMenuDir" Name="VideoCut Studio" />
+      </Directory>
+      <Directory Id="DesktopFolder" />
+    </Directory>
+
+    <DirectoryRef Id="ProgramMenuDir">
+      <Component Id="cmpShortcuts" Guid="{9B5A2C74-1E6D-4F83-8C27-5D3F1A9E6B42}" Win64="yes">
+        <Shortcut Id="StartMenuShortcut"
+                  Directory="ProgramMenuDir"
+                  Name="VideoCut Studio"
+                  Description="Free offline video editor"
+                  Target="[INSTALLDIR]VideoCutStudio.exe"
+                  WorkingDirectory="INSTALLDIR"
+                  Icon="AppIcon" />
+        <Shortcut Id="DesktopShortcut"
+                  Directory="DesktopFolder"
+                  Name="VideoCut Studio"
+                  Description="Free offline video editor"
+                  Target="[INSTALLDIR]VideoCutStudio.exe"
+                  WorkingDirectory="INSTALLDIR"
+                  Icon="AppIcon" />
+        <RemoveFolder Id="RemoveProgramMenuDir" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\VideoCut\VideoCutStudio"
+                       Name="shortcuts" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="INSTALLDIR">
+      <Component Id="cmpFileAssoc" Guid="{4D8E1B62-3A75-4C90-B1F6-7E2D9A5C0F83}" Win64="yes">
+        <RegistryKey Root="HKLM" Key="Software\Classes\.vcs">
+          <RegistryValue Type="string" Value="VideoCutStudio.Project" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="Software\Classes\VideoCutStudio.Project">
+          <RegistryValue Type="string" Value="VideoCut Studio project" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="Software\Classes\VideoCutStudio.Project\DefaultIcon">
+          <RegistryValue Type="string" Value="[INSTALLDIR]VideoCutStudio.exe,0" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="Software\Classes\VideoCutStudio.Project\shell\open\command">
+          <RegistryValue Type="string" Value="&quot;[INSTALLDIR]VideoCutStudio.exe&quot; &quot;%1&quot;" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\App Paths\VideoCutStudio.exe">
+          <RegistryValue Type="string" Value="[INSTALLDIR]VideoCutStudio.exe" />
+        </RegistryKey>
+      </Component>
+    </DirectoryRef>
+
+    <Feature Id="MainFeature" Title="VideoCut Studio" Level="1" Display="expand"
+             Description="The editor, its runtime and the bundled ffmpeg.">
+      <ComponentRef Id="cmpShortcuts" />
+      <ComponentRef Id="cmpFileAssoc" />
+      <ComponentGroupRef Id="AppFiles" />
+    </Feature>
+
+    <UIRef Id="WixUI_InstallDir" />
+
+  </Product>
+</Wix>

@@ -1,0 +1,20 @@
+# build output
+cpp/build/
+dist-cpp/
+build/
+dist/
+obj/
+installer/obj/
+*.msi
+*.wixobj
+*.wixpdb
+
+# bundled tooling
+tools/
+vendor/ffmpeg/
+legacy/
+
+# scratch
+dev_*/
+*.log
+*.zip
