@@ -5,77 +5,82 @@ composited preview, no account, no watermark, no upload.
 
 **Repository:** https://github.com/unknowndevelopment-ld/videocut-studio
 
-**Install:** run `VideoCutStudio-Setup-1.4.0.exe` — a single branded installer
+**Install:** run `VideoCutStudio-Setup-1.4.1.exe` â€” a single branded installer
 with no wizard and no MSI. It installs per-user (no UAC prompt) and adds the
 Start Menu entry, desktop shortcut, `.vcs` association and an "Apps & features"
 entry.
 
 **Run without installing:** `dist-cpp\VideoCutStudio\VideoCutStudio.exe`
-(copy the whole folder if you move it — Qt and ffmpeg live beside the exe)
+(copy the whole folder if you move it â€” Qt and ffmpeg live beside the exe)
 
 ---
 
 ## What it does
 
-**Timeline** — multiple video/audio tracks, drag to move, drag edges to trim,
+**Timeline** â€” multiple video/audio tracks, drag to move, drag edges to trim,
 snapping guides, split at playhead, duplicate, ripple delete, copy/paste,
 multi-select, rubber band, zoom (`+` / `-` / `F`, `Ctrl`+wheel) and pan
 (middle mouse).
 
-**Clips** — speed 0.1×–8× (pitch-correct audio on export), volume/mute,
+**Clips** â€” speed 0.1Ã—â€“8Ã— (pitch-correct audio on export), volume/mute,
 position, scale, rotation, opacity, contain/cover/stretch, fade in/out.
 
-**Looks** — brightness, contrast, saturation, hue, blur, sharpen, vignette.
+**Looks** â€” brightness, contrast, saturation, hue, blur, sharpen, vignette.
 
-**Transitions** — right-click a clip → *Add transition* (or **Add → Transition
+**Transitions** â€” right-click a clip â†’ *Add transition* (or **Add â†’ Transition
 after selected clip**). Six types: dissolve, fade through black, and slide
-left/right/up/down. A badge sits on the junction — click it to change the type
+left/right/up/down. A badge sits on the junction â€” click it to change the type
 or remove it. They play in the preview and render into the export.
 
-**Text** — overlays with any installed font (plus *Load font file…* for
+**Text** â€” overlays with any installed font (plus *Load font fileâ€¦* for
 `.ttf` / `.otf`), size, colour, outline, bold/italic, free positioning and
 entrance animations: fade in, pop, slide left/right/up/down and typewriter
 (character-by-character with a cursor). Animations render frame-for-frame in
 the preview *and* in the export.
 
-**Shapes & annotations** — arrows, circles, rectangles, lines, triangles,
+**Shapes & annotations** â€” arrows, circles, rectangles, lines, triangles,
 stars, check marks and crosses. Pick one from **Shapes** in the toolbar (or
 **A** for a quick arrow). Drag/scale/rotate them like any clip, then set the
-colour, thickness, fill and a dark readable edge — great for pointing at
+colour, thickness, fill and a dark readable edge â€” great for pointing at
 something in a screen recording. They render in the preview and the export.
 
-**Looks** — one-click colour presets: Cinematic, Vivid, Black & white, Warm,
+**Looks** â€” one-click colour presets: Cinematic, Vivid, Black & white, Warm,
 Cool, Vintage. They just set the grading sliders, so you can tweak afterwards.
 
-**Media** — MP4, MOV, MKV, WebM, AVI, WMV, MP3, WAV, FLAC, PNG, JPG, GIF…
+**Media** â€” MP4, MOV, MKV, WebM, AVI, WMV, MP3, WAV, FLAC, PNG, JPG, GIFâ€¦
 with filmstrip thumbnails and audio waveforms.
 
-**Preview** — real-time, fully composited playback. Each media clip has its own
+**Preview** â€” real-time, fully composited playback. Each media clip has its own
 decoder; frames are blended live (video, images, text, transforms, opacity,
 fades, colour, vignette). There is no proxy render and no "rendering preview"
-wait — press play and it goes. Blur and sharpen stay export-only, like most
+wait â€” press play and it goes. Blur and sharpen stay export-only, like most
 NLE previews.
 
-**Export** — MP4 (H.264), WebM (VP9), MKV, GIF; 480p → 4K plus vertical and
+**Direct manipulation** - click any video, image, text or shape right in the
+preview to select it. Drag the body to move it, drag a corner handle to scale,
+or drag the round handle above the box to rotate (`Shift` snaps to 15 degrees).
+The properties panel follows along live, and every gesture is one undo step.
+
+**Export** â€” MP4 (H.264), WebM (VP9), MKV, GIF; 480p â†’ 4K plus vertical and
 square; quality slider with size estimate, live progress, cancel.
 
-**Fast export startup** — each media file is opened once and fanned out to all
+**Fast export startup** â€” each media file is opened once and fanned out to all
 clips that use it, text intro frames are rendered only for the animation, and
 ffmpeg is warmed in the background at launch, so the wait before the progress
 bar moves is short even on a long timeline.
 
-**Projects** — `.vcs` JSON, undo/redo on everything, remembered window layout.
+**Projects** â€” `.vcs` JSON, undo/redo on everything, remembered window layout.
 
 ## Accessibility
 
 - Every control has an accessible name/role; the timeline announces selection
   and operation results through `QAccessible` alert events.
-- **Accessible clip list (`Alt+L`)** — a plain, keyboard- and screen-reader
+- **Accessible clip list (`Alt+L`)** â€” a plain, keyboard- and screen-reader
   friendly list of every clip. Select rows to select clips, Enter to jump to
   one. Use it instead of the canvas if dragging is difficult.
-- **High contrast mode (`Alt+H`)** — pure black with red accent and white
+- **High contrast mode (`Alt+H`)** â€” pure black with red accent and white
   borders.
-- **Interface scaling (`Alt+Plus` / `Alt+Minus`)** — 80 %–160 %, applied live.
+- **Interface scaling (`Alt+Plus` / `Alt+Minus`)** â€” 80 %â€“160 %, applied live.
 - Full keyboard operation, visible focus rings, logical tab order, and
   shortcuts that do not fire while typing in a text field.
 
@@ -86,10 +91,10 @@ The preview is built to stay at 30 fps rather than look pretty and stutter:
 - The engine renders at exactly the on-screen size (1:1 blit, no rescaling).
 - Colour grading runs at preview resolution, not source resolution.
 - Playhead movement repaints two thin strips of the timeline, not the whole
-  timeline (filmstrips and waveforms are not redrawn 30×/second).
+  timeline (filmstrips and waveforms are not redrawn 30Ã—/second).
 - Clip players are only re-seeked on large drift, never every half second.
-- **View → Preview quality** — *Balanced* (960×540 cap, default), *Full
-  resolution* (1280×720), or *Fast* (640×360) for older machines. Saved
+- **View â†’ Preview quality** â€” *Balanced* (960Ã—540 cap, default), *Full
+  resolution* (1280Ã—720), or *Fast* (640Ã—360) for older machines. Saved
   between sessions.
 
 ## Keyboard shortcuts
@@ -97,7 +102,7 @@ The preview is built to stay at 30 fps rather than look pretty and stutter:
 | Key | Action |
 | --- | --- |
 | `Space` | Play / pause |
-| `←` / `→` | Step a frame (`Shift` = one second) |
+| `â†` / `â†’` | Step a frame (`Shift` = one second) |
 | `Home` / `End` | Start / end |
 | `S` | Split at playhead |
 | `Del` / `Shift+Del` | Delete / ripple delete |
@@ -115,19 +120,19 @@ The preview is built to stay at 30 fps rather than look pretty and stutter:
 ## Install
 
 ```
-VideoCutStudio-Setup-<version>.exe     ← double-click, accept the terms, Install
+VideoCutStudio-Setup-<version>.exe     â† double-click, accept the terms, Install
 ```
 
 A custom installer, not an MSI: one dark window with the app's branding, a
 progress bar, and a "Launch" button when it's done. Details:
 
-- **Per-user** install to `%LOCALAPPDATA%\Programs\VideoCut Studio` — **no UAC**,
+- **Per-user** install to `%LOCALAPPDATA%\Programs\VideoCut Studio` â€” **no UAC**,
   no admin rights.
 - Adds Start Menu + desktop shortcuts, a `.vcs` file association, an `AppPaths`
   entry and an **Apps & features** entry with its own uninstaller.
-- Silent/upgrade mode: `VideoCutStudio-Setup-1.4.0.exe --silent` (used by the 
+- Silent/upgrade mode: `VideoCutStudio-Setup-1.4.1.exe --silent` (used by the 
   built-in updater).
-- Uninstall from **Settings → Apps** (or `Uninstall.exe /S` in the install
+- Uninstall from **Settings â†’ Apps** (or `Uninstall.exe /S` in the install
   folder); projects and settings are left alone.
 - The installer carries everything: Qt runtime, ffmpeg and the legal docs.
 
@@ -142,29 +147,29 @@ The app updates itself from GitHub Releases:
    ```
    That produces `dist-cpp\VideoCutStudio-Setup-<version>.exe` and `update.json`
    (version, size, SHA-256).
-3. Tag and push: `git tag v1.4.0; git push --tags`. The workflow in 
+3. Tag and push: `git tag v1.4.1; git push --tags`. The workflow in 
    `.github/workflows/release.yml` builds on `windows-latest` and attaches the
    installer + `update.json` to the release.
 4. Installed copies check `https://api.github.com/repos/<repo>/releases/latest`
-   nine seconds after launch (and from **Help → Check for updates**). A newer
+   nine seconds after launch (and from **Help â†’ Check for updates**). A newer
    version offers a one-click download, then the app closes and the Setup.exe
    runs in `--silent` mode to install it.
 
 No feed is configured until you pass `-Repo`, so a plain build never phones
-home. **Code signing:** the installer is unsigned by default — sign it with
+home. **Code signing:** the installer is unsigned by default â€” sign it with
 `signtool sign /fd sha256 /tr <timestamp-url> /td sha256 <exe>` (the Setup.exe
 and the app exe inside) with an EV/OV certificate before publishing, or
 SmartScreen will warn on first run.
 
 ## Legal
 
-- `legal/EULA.rtf` — shown in the installer before anything is copied
-- `legal/TERMS.md` — Terms of Service
-- `legal/PRIVACY.md` — no accounts, no telemetry, local-only processing
-- `legal/THIRD-PARTY.md` — Qt (LGPL-3), ffmpeg (GPL-3), MinGW runtime
+- `legal/EULA.rtf` â€” shown in the installer before anything is copied
+- `legal/TERMS.md` â€” Terms of Service
+- `legal/PRIVACY.md` â€” no accounts, no telemetry, local-only processing
+- `legal/THIRD-PARTY.md` â€” Qt (LGPL-3), ffmpeg (GPL-3), MinGW runtime
 
 The same documents are installed in `%LOCALAPPDATA%\Programs\VideoCut Studio\legal` and
-open from **Help → Terms of Service / Privacy Policy / Third-party notices**.
+open from **Help â†’ Terms of Service / Privacy Policy / Third-party notices**.
 
 ## Build it yourself
 
@@ -214,4 +219,4 @@ cpp/src/
 - Decoding/encoding uses the bundled ffmpeg; preview decoding uses Qt
   Multimedia (hardware accelerated where the driver allows).
 - The Python/PySide6 prototype has been removed; this is the only build.
-- ffmpeg is distributed under the GPL/LGPL — see `vendor/ffmpeg`.
+- ffmpeg is distributed under the GPL/LGPL â€” see `vendor/ffmpeg`.

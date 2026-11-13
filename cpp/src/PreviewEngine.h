@@ -4,6 +4,7 @@
 #include <QHash>
 #include <QImage>
 #include <QObject>
+#include <QRectF>
 #include <QSize>
 #include <QTimer>
 
@@ -45,6 +46,14 @@ public:
 
     void setVolume(double volume);
 
+    struct ClipBox {
+        QString id;
+        QRectF rect;       // project pixels, unrotated, centred on the clip
+        double rotation = 0.0;
+    };
+    // Bounding boxes of the clips visible at `t`, bottom-most first.
+    QVector<ClipBox> clipBoxes(double t) const;
+
 signals:
     void frameReady(const QImage &frame);
     void positionChanged(double seconds);
@@ -53,6 +62,14 @@ signals:
 
 private:
     struct Layer;
+    struct Placement {
+        QSizeF size;
+        QPointF center;
+        double rotation = 0.0;
+    };
+
+    Placement placement(const Clip &clip, const QSizeF &imageSize, double t) const;
+    QSizeF layerSourceSize(const Clip &clip, Layer *layer) const;
 
     void rebuild();
     void createPlayer(Layer *layer);

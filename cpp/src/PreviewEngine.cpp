@@ -398,6 +398,83 @@ double PreviewEngine::fadeFactor(const Clip &clip, double t) const
     return f;
 }
 
+PreviewEngine::Placement PreviewEngine::placement(const Clip &clip, const QSizeF &imageSize,
+                                                  double t) const
+{
+    Placement p;
+    if (!m_project || imageSize.isEmpty()) return p;
+
+    const double W = m_project->width;
+    const double H = m_project->height;
+    const double scale = qMax(0.02, clip.scale);
+
+    if (clip.kind == ClipKind::Text) {
+        p.size = QSizeF(imageSize.width() * scale, imageSize.height() * scale);
+        p.center = QPointF((W - p.size.width()) * clip.posX + p.size.width() / 2.0 + clip.x,
+                           (H - p.size.height()) * clip.posY + p.size.height() / 2.0 + clip.y);
+    } else {
+        const QSizeF box(W * scale, H * scale);
+        p.size = QSizeF(fitInto(imageSize, box, clip.fit));
+        p.center = QPointF(W / 2.0 + clip.x, H / 2.0 + clip.y);
+    }
+
+    if (Transition *tr = m_project->transitionFor(clip.id)) {
+        if (tr->isSlide()) {
+            const double d = qMax(0.05, tr->duration);
+            const double prog = qBound(0.0, (t - clip.start) / d, 1.0);
+            const double off = 1.0 - prog;
+            if (tr->type == "slideLeft") p.center.rx() += off * W;
+            else if (tr->type == "slideRight") p.center.rx() -= off * W;
+            else if (tr->type == "slideUp") p.center.ry() += off * H;
+            else if (tr->type == "slideDown") p.center.ry() -= off * H;
+        }
+    }
+
+    p.rotation = clip.rotation;
+    return p;
+}
+
+QSizeF PreviewEngine::layerSourceSize(const Clip &clip, Layer *layer) const
+{
+    if (layer) {
+        if (!layer->still.isNull()) return QSizeF(layer->still.size());
+        if (layer->hasFrame && !layer->frame.isNull()) return QSizeF(layer->frame.size());
+    }
+    if (!clip.path.isEmpty()) {
+        const MediaInfo info = MediaUtils::probe(clip.path);
+        if (info.width > 0 && info.height > 0) return QSizeF(info.width, info.height);
+    }
+    return {};
+}
+
+QVector<PreviewEngine::ClipBox> PreviewEngine::clipBoxes(double t) const
+{
+    QVector<ClipBox> out;
+    if (!m_project || m_size.isEmpty()) return out;
+
+    auto tracks = m_project->videoTracks();
+    for (int i = tracks.size() - 1; i >= 0; --i) {
+        Track *track = tracks[i];
+        if (track->hidden) continue;
+        for (Clip *clipPtr : m_project->clipsOn(track->id)) {
+            const Clip &clip = *clipPtr;
+            if (t < clip.start || t >= clip.end()) continue;
+            if (qBound(0.0, clip.opacity * fadeFactor(clip, t), 1.0) <= 0.004) continue;
+            Layer *layer = m_layers.value(clip.id, nullptr);
+            if (!layer) continue;
+            const QSizeF source = layerSourceSize(clip, layer);
+            if (source.isEmpty()) continue;
+            const Placement place = placement(clip, source, t);
+            out.append({clip.id,
+                        QRectF(place.center - QPointF(place.size.width() / 2.0,
+                                                      place.size.height() / 2.0),
+                               place.size),
+                        place.rotation});
+        }
+    }
+    return out;
+}
+
 QImage PreviewEngine::layerImage(Layer *layer)
 {
     if (!layer) return {};
@@ -417,7 +494,6 @@ QImage PreviewEngine::composite(double t)
     QPainter p(&canvas);
     p.setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform, true);
 
-    const double w = m_size.width();
     const double h = m_size.height();
     const double k = h / qMax(1, m_project->height);
 
@@ -449,29 +525,10 @@ QImage PreviewEngine::composite(double t)
             p.save();
             p.setOpacity(opacity);
 
-            QSizeF target;
-            double cx = w / 2 + clip.x * k;
-            double cy = h / 2 + clip.y * k;
-            if (clip.kind == ClipKind::Text) {
-                target = QSizeF(image.width() * k, image.height() * k);
-                cx = (w - target.width()) * clip.posX + target.width() / 2;
-                cy = (h - target.height()) * clip.posY + target.height() / 2;
-            } else {
-                const QSizeF box(w * qMax(0.02, clip.scale), h * qMax(0.02, clip.scale));
-                target = fitInto(image.size(), box, clip.fit);
-            }
-
-            if (Transition *tr = m_project->transitionFor(clip.id)) {
-                if (tr->isSlide()) {
-                    const double d = qMax(0.05, tr->duration);
-                    const double p = qBound(0.0, (t - clip.start) / d, 1.0);
-                    const double off = 1.0 - p;
-                    if (tr->type == "slideLeft") cx += off * w;
-                    else if (tr->type == "slideRight") cx -= off * w;
-                    else if (tr->type == "slideUp") cy += off * h;
-                    else if (tr->type == "slideDown") cy -= off * h;
-                }
-            }
+            const Placement place = placement(clip, QSizeF(image.size()), t);
+            const QSizeF target(place.size.width() * k, place.size.height() * k);
+            const double cx = place.center.x() * k;
+            const double cy = place.center.y() * k;
             // Grade at preview resolution instead of the source resolution.
             if (clip.kind == ClipKind::Video && needsAdjust(clip)) {
                 if (image.width() > target.width() + 2)

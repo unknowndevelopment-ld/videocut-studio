@@ -241,7 +241,9 @@ QString videoChain(Graph &g, const Project &project, const Clip &clip, const QSt
         parts << fitScale(clip, W, H);
         parts << "setsar=1";
     } else {
-        const double k = double(H) / qMax(1, project.height);
+        // Text is rendered at project scale; apply the output scale and the
+        // clip's transform scale so on-canvas resizing works in the export too.
+        const double k = double(H) / qMax(1, project.height) * qMax(0.02, clip.scale);
         if (qAbs(k - 1.0) > 1e-3) parts << QString("scale=iw*%1:ih*%1").arg(k, 0, 'f', 5);
     }
     parts << effects(clip);
@@ -313,11 +315,14 @@ QString buildFilterGraph(Graph &g, const Project &projectConst, const RenderOpti
             const QString label = QString("v%1").arg(n);
             videoChain(g, project, clip, source, isText, opts, label);
 
+            const double outScale = double(opts.height) / qMax(1, project.height);
             QString xExpr;
             QString yExpr;
             if (isText) {
-                xExpr = QString("(main_w-overlay_w)*%1").arg(clip.posX, 0, 'f', 4);
-                yExpr = QString("(main_h-overlay_h)*%1").arg(clip.posY, 0, 'f', 4);
+                xExpr = QString("(main_w-overlay_w)*%1+(%2)")
+                            .arg(clip.posX, 0, 'f', 4).arg(clip.x * outScale, 0, 'f', 2);
+                yExpr = QString("(main_h-overlay_h)*%1+(%2)")
+                            .arg(clip.posY, 0, 'f', 4).arg(clip.y * outScale, 0, 'f', 2);
                 if (clip.textAnim == "slideUp" || clip.textAnim == "slideDown") {
                     const double d = 0.5;
                     const QString prog = QString("if(lt(t,%1),1-(t-%2)/%3,0)")
@@ -328,8 +333,8 @@ QString buildFilterGraph(Graph &g, const Project &projectConst, const RenderOpti
                             + QString("(%1)*0.09*main_h").arg(prog);
                 }
             } else {
-                xExpr = QString("(main_w-overlay_w)/2+%1").arg(clip.x, 0, 'f', 2);
-                yExpr = QString("(main_h-overlay_h)/2+%1").arg(clip.y, 0, 'f', 2);
+                xExpr = QString("(main_w-overlay_w)/2+(%1)").arg(clip.x * outScale, 0, 'f', 2);
+                yExpr = QString("(main_h-overlay_h)/2+(%1)").arg(clip.y * outScale, 0, 'f', 2);
             }
             if (Transition *tr = project.transitionFor(clip.id)) {
                 if (tr->isSlide()) {

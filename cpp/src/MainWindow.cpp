@@ -37,6 +37,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QProcess>
 #include <QProgressDialog>
@@ -180,6 +181,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_preview->engine()->setQuality(QSettings("VideoCut", "VideoCutStudio")
                                         .value("preview_quality", 0).toInt());
     m_preview->engine()->setProject(&m_project);
+    m_preview->setProject(&m_project);
     m_preview->refreshSize();
     m_preview->setDuration(m_project.duration());
     m_timeline->zoomFit();
@@ -685,6 +687,21 @@ void MainWindow::wireSignals()
     connect(m_preview, &PreviewPanel::playRequested, this, &MainWindow::togglePlay);
     connect(m_preview, &PreviewPanel::playingChanged, this, &MainWindow::onPlayToggled);
     connect(m_preview, &PreviewPanel::positionChanged, this, &MainWindow::onPlayerPosition);
+    connect(m_preview, &PreviewPanel::clipSelected, this, [this](const QString &id) {
+        if (id.isEmpty()) m_timeline->clearSelection();
+        else m_timeline->selectIds({id});
+    });
+    connect(m_preview, &PreviewPanel::transformStarted, this,
+            [this](const QString &label, const QString &key) { pushUndo(label, key); });
+    connect(m_preview, &PreviewPanel::transformChanged, this, [this]() {
+        markDirty();
+        m_preview->engine()->invalidate();
+        m_properties->syncValues();
+    });
+    connect(m_preview, &PreviewPanel::transformFinished, this, [this]() {
+        updateStatus();
+        updateA11ySummary();
+    });
 
     connect(m_mediaBin, &MediaBin::addRequested, this,
             [this](const QStringList &paths) { addMediaToTimeline(paths); });
@@ -776,6 +793,7 @@ void MainWindow::onProjectChanged()
 void MainWindow::onSelectionChanged()
 {
     m_properties->setClips(m_timeline->selectedClips());
+    m_preview->setSelection(m_timeline->selectedIds());
     updateA11ySummary();
     if (m_clipList && m_clipList->isVisible())
         m_clipList->setSelection(m_timeline->selectedIds());
@@ -1103,6 +1121,7 @@ void MainWindow::loadProject(Project project, const QString &path)
     m_mediaBin->setProject(&m_project);
     m_properties->setProject(&m_project);
     m_preview->engine()->setProject(&m_project);
+    m_preview->setProject(&m_project);
     m_preview->refreshSize();
     m_preview->setDuration(m_project.duration());
     m_preview->setTimeLabel(0);
@@ -1577,9 +1596,50 @@ void MainWindow::runSelfTest(const QString &outDir)
         onSeek(2.5);
         log(QString("preview frame ready at 2.5s, size %1x%2")
                 .arg(m_preview->frameSize().width()).arg(m_preview->frameSize().height()));
+
+        auto *surface = m_preview->findChild<PreviewSurface *>();
+        Clip *target = nullptr;
+        for (Clip &c : m_project.clips)
+            if (c.kind == ClipKind::Image) { target = &c; break; }
+        if (!surface || !target) return;
+
+        m_timeline->selectIds({target->id});
+        const double scaleBefore = target->scale;
+        const QVector<QPointF> handles = surface->handlesFor(target->id);
+        if (handles.size() != 5) {
+            log("preview transform: clip not visible at the playhead");
+            return;
+        }
+
+        auto send = [surface](QEvent::Type type, const QPointF &pos, Qt::MouseButton button,
+                              Qt::MouseButtons buttons) {
+            QMouseEvent ev(type, pos, surface->mapToGlobal(pos), button, buttons, Qt::NoModifier);
+            QCoreApplication::sendEvent(surface, &ev);
+        };
+
+        send(QEvent::MouseButtonPress, handles[2], Qt::LeftButton, Qt::LeftButton);
+        send(QEvent::MouseMove, handles[2] + QPointF(36, 36), Qt::NoButton, Qt::LeftButton);
+        send(QEvent::MouseButtonRelease, handles[2] + QPointF(36, 36), Qt::LeftButton, Qt::NoButton);
+        const double scaled = target->scale;
+
+        const QVector<QPointF> afterScale = surface->handlesFor(target->id);
+        send(QEvent::MouseButtonPress, afterScale[4], Qt::LeftButton, Qt::LeftButton);
+        send(QEvent::MouseMove, afterScale[4] + QPointF(60, 40), Qt::NoButton, Qt::LeftButton);
+        send(QEvent::MouseButtonRelease, afterScale[4] + QPointF(60, 40), Qt::LeftButton, Qt::NoButton);
+
+        log(QString("preview transform: scale %1 -> %2, rotation %3")
+                .arg(scaleBefore, 0, 'f', 2).arg(scaled, 0, 'f', 2)
+                .arg(target->rotation, 0, 'f', 1));
+        for (const PreviewEngine::ClipBox &box : m_preview->engine()->clipBoxes(2.5)) {
+            if (box.id != target->id) continue;
+            log(QString("transform box: %1x%2 px, rotation %3")
+                    .arg(box.rect.width(), 0, 'f', 0).arg(box.rect.height(), 0, 'f', 0)
+                    .arg(box.rotation, 0, 'f', 1));
+        }
     });
     QTimer::singleShot(3000, this, [this, outDir, log]() {
         grab().save(outDir + "/screenshot_paused.png");
+        m_preview->engine()->lastFrame().save(outDir + "/preview_frame.png");
         log("screenshot_paused.png saved");
     });
     QTimer::singleShot(4000, this, [this, log]() {
