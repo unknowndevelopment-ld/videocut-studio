@@ -70,6 +70,8 @@ private:
     void addText();
     void addShape(const QString &type);
     QMenu *createShapeMenu(QWidget *parent);
+    QMenu *createTransitionMenu(QWidget *parent);
+    void applyTransition(const QString &type);
 
     void splitClip();
     void deleteClips(bool ripple);

@@ -283,6 +283,14 @@ static void drawIcon(const QString &name, QPainter &p, const QRectF &r, const QC
         p.setBrush(Qt::NoBrush);
     } else if (name == "line") {
         p.drawLine(QPointF(4, 20), QPointF(20, 4));
+    } else if (name == "transition") {
+        // Two shots overlapping at a cut.
+        p.drawRoundedRect(QRectF(3.5, 6, 9.5, 12), 1.5, 1.5);
+        p.drawRoundedRect(QRectF(11, 6, 9.5, 12), 1.5, 1.5);
+        p.setPen(Qt::NoPen);
+        p.setBrush(color);
+        p.drawPolygon(QPolygonF({QPointF(12, 9.5), QPointF(14.6, 12),
+                                 QPointF(12, 14.5), QPointF(9.4, 12)}));
     } else if (name == "export") {
         p.drawLine(QPointF(12, 15), QPointF(12, 4));
         p.drawLine(QPointF(7.5, 8), QPointF(12, 3.5));

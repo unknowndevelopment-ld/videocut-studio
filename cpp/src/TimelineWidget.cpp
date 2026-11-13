@@ -372,6 +372,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
     drawRuler(p);
     drawHeaders(p, layout);
     drawTransitions(p);
+    drawJunctions(p);
     drawPlayhead(p);
 
     if (m_snapLine >= 0) {
@@ -710,6 +711,75 @@ QString TimelineWidget::transitionAt(const QPoint &pos) const
     return {};
 }
 
+QVector<TimelineWidget::Junction> TimelineWidget::junctions() const
+{
+    QVector<Junction> out;
+    if (!m_project) return out;
+    const double size = Theme::px(20);
+    for (const Row &row : rows()) {
+        if (row.track->hidden || row.track->locked) continue;
+        const auto clips = m_project->clipsOn(row.track->id);
+        for (int i = 0; i + 1 < clips.size(); ++i) {
+            const Clip *from = clips[i];
+            const Clip *to = clips[i + 1];
+            if (qAbs(to->start - from->end()) > 0.06) continue;   // only real cuts
+            if (m_project->transitionFor(to->id)) continue;       // badge already there
+            const double x = timeToX(from->end());
+            out.append({from->id, to->id,
+                        QRectF(x - size / 2.0, row.top + row.height / 2.0 - size / 2.0,
+                               size, size)});
+        }
+    }
+    return out;
+}
+
+bool TimelineWidget::junctionAt(const QPoint &pos, QString *fromId, QString *toId) const
+{
+    const QVector<Junction> all = junctions();
+    for (const Junction &junction : all) {
+        if (!junction.rect.contains(pos)) continue;
+        if (fromId) *fromId = junction.fromId;
+        if (toId) *toId = junction.toId;
+        return true;
+    }
+    return false;
+}
+
+void TimelineWidget::drawJunctions(QPainter &p)
+{
+    p.save();
+    p.setClipRect(viewport());
+    for (const Junction &junction : junctions()) {
+        if (junction.rect.right() < viewport().left()
+            || junction.rect.left() > viewport().right())
+            continue;
+        const bool hover = junction.toId == m_hoverJunction;
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.setPen(QPen(Theme::accent(), hover ? 2.0 : 1.2));
+        p.setBrush(hover ? Theme::accentSoft() : QColor(6, 6, 8, 210));
+        p.drawEllipse(junction.rect);
+        const QPointF c = junction.rect.center();
+        const double arm = Theme::px(4);
+        p.setPen(QPen(Theme::text(), 2.0, Qt::SolidLine, Qt::RoundCap));
+        p.drawLine(QPointF(c.x() - arm, c.y()), QPointF(c.x() + arm, c.y()));
+        p.drawLine(QPointF(c.x(), c.y() - arm), QPointF(c.x(), c.y() + arm));
+    }
+    p.restore();
+}
+
+void TimelineWidget::setTransitionType(const QString &toClipId, const QString &type)
+{
+    if (!m_project) return;
+    Transition *transition = m_project->transitionFor(toClipId);
+    if (!transition || transition->type == type) return;
+    emit undoPoint(tr("Change transition"));
+    transition->type = type;
+    applyTransitionFades(*transition);
+    emit changed();
+    emit announce(tr("Transition changed"));
+    update();
+}
+
 void TimelineWidget::applyTransitionFades(Transition &tr)
 {
     Clip *to = m_project ? m_project->clip(tr.toClip) : nullptr;
@@ -991,6 +1061,14 @@ void TimelineWidget::mousePressEvent(QMouseEvent *event)
         return;
     }
 
+    QString junctionFrom;
+    QString junctionTo;
+    if (junctionAt(pos, &junctionFrom, &junctionTo)) {
+        addTransitionBetween(junctionFrom, junctionTo, "dissolve", 0.5);
+        emit announce(tr("Dissolve added. Click the badge to change its type."));
+        return;
+    }
+
     const QString trHit = transitionAt(pos);
     if (!trHit.isEmpty()) {
         showTransitionMenu(mapToGlobal(pos), trHit);
@@ -1035,6 +1113,24 @@ void TimelineWidget::mouseMoveEvent(QMouseEvent *event)
     const QPoint pos = event->position().toPoint();
 
     if (!m_dragging) {
+        QString junctionFrom;
+        QString junctionTo;
+        if (junctionAt(pos, &junctionFrom, &junctionTo)) {
+            if (m_hoverJunction != junctionTo) {
+                m_hoverJunction = junctionTo;
+                m_hoverClip.clear();
+                m_hoverZone.clear();
+                update();
+            }
+            setToolTip(tr("Add a dissolve here"));
+            setCursor(Qt::PointingHandCursor);
+            return;
+        }
+        if (!m_hoverJunction.isEmpty()) {
+            m_hoverJunction.clear();
+            update();
+        }
+
         const Hit hit = hitTest(pos);
         const QString newHover = hit.clip ? hit.clip->id : QString();
         if (newHover != m_hoverClip || hit.zone != m_hoverZone) {

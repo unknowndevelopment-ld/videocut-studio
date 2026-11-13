@@ -28,6 +28,7 @@ public:
     void clearSelection();
     void addTransitionBetween(const QString &fromClipId, const QString &toClipId,
                               const QString &type = "dissolve", double duration = 0.5);
+    void setTransitionType(const QString &toClipId, const QString &type);
 
     void setZoom(double pps, double anchorX = -1);
     void zoomIn();
@@ -42,6 +43,8 @@ public:
 
     bool snapEnabled = true;
     QRectF clipRectForTest(const Clip &clip) const { return clipRect(clip); }
+    int junctionCountForTest() const { return junctions().size(); }
+    QRectF junctionRectForTest(int index) const { return junctions().value(index).rect; }
 
 signals:
     void seek(double seconds);
@@ -100,11 +103,19 @@ private:
     void trimLeft(const QPoint &pos, double dt);
     void trimRight(double dt);
     void contextMenu(const QPoint &pos);
+    struct Junction {
+        QString fromId;
+        QString toId;
+        QRectF rect;
+    };
+    QVector<Junction> junctions() const;
+    bool junctionAt(const QPoint &pos, QString *fromId = nullptr, QString *toId = nullptr) const;
     QRectF transitionRect(const Transition &tr) const;
     QString transitionAt(const QPoint &pos) const;
     void applyTransitionFades(Transition &tr);
     void showTransitionMenu(const QPoint &globalPos, const QString &transitionId);
     void drawTransitions(QPainter &p);
+    void drawJunctions(QPainter &p);
     QPixmap sheet(const QString &path);
     QPixmap poster(const QString &path);
     QVector<float> wave(const QString &path);
@@ -131,6 +142,7 @@ private:
 
     QString m_hoverClip;
     QString m_hoverZone;
+    QString m_hoverJunction;
     double m_snapLine = -1;
     QRect m_band;
     bool m_focusRing = false;

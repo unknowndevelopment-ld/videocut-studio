@@ -309,6 +309,9 @@ void MainWindow::buildUi()
     auto *shapeBtn = makeToolButton(tr("Shapes"), "arrow",
                                     tr("Add an arrow, circle or other annotation (A)"));
     shapeBtn->setMenu(createShapeMenu(shapeBtn));
+    auto *transitionBtn = makeToolButton(tr("Transition"), "transition",
+                                         tr("Add a transition after the selected clip (X)"));
+    transitionBtn->setMenu(createTransitionMenu(transitionBtn));
     auto *splitBtn = makeToolButton(tr("Split"), "split", tr("Split at playhead (S)"));
     auto *deleteBtn = makeToolButton(tr("Delete"), "trash", tr("Delete selection (Del)"));
     auto *undoBtn = makeToolButton(QString(), "undo", tr("Undo (Ctrl+Z)"), true);
@@ -335,6 +338,7 @@ void MainWindow::buildUi()
     bar->addWidget(importBtn);
     bar->addWidget(textBtn);
     bar->addWidget(shapeBtn);
+    bar->addWidget(transitionBtn);
     bar->addSpacing(Theme::px(4));
     bar->addWidget(separator());
     bar->addSpacing(Theme::px(4));
@@ -489,32 +493,6 @@ void MainWindow::createActions()
     auto *actAddText = new QAction(tr("Text clip\tT"), this);
     connect(actAddText, &QAction::triggered, this, &MainWindow::addText);
 
-    auto *actAddTransition = new QAction(tr("Transition after selected clip"), this);
-    connect(actAddTransition, &QAction::triggered, this, [this]() {
-        auto selected = m_timeline->selectedClips();
-        if (selected.isEmpty()) {
-            announce(tr("Select a clip first"));
-            return;
-        }
-        Clip *clip = selected.first();
-        auto clips = m_project.clipsOn(clip->track);
-        for (int i = 0; i + 1 < clips.size(); ++i) {
-            if (clips[i]->id != clip->id) continue;
-            Clip *next = clips[i + 1];
-            if (next->start > clip->end() + 0.02) {
-                announce(tr("The next clip needs to touch this one"));
-                return;
-            }
-            if (m_project.transitionFor(next->id)) {
-                announce(tr("There is already a transition here"));
-                return;
-            }
-            m_timeline->addTransitionBetween(clip->id, next->id);
-            return;
-        }
-        announce(tr("No following clip on this track"));
-    });
-
     auto *actAddVideoTrack = new QAction(tr("Video track"), this);
     connect(actAddVideoTrack, &QAction::triggered, this, [this]() {
         pushUndo(tr("Add video track"));
@@ -633,7 +611,7 @@ void MainWindow::createActions()
     auto *addMenu = menuBar()->addMenu(tr("&Add"));
     addMenu->addAction(actAddText);
     addMenu->addMenu(createShapeMenu(addMenu));
-    addMenu->addAction(actAddTransition);
+    addMenu->addMenu(createTransitionMenu(addMenu));
     addMenu->addAction(actAddVideoTrack);
     addMenu->addAction(actAddAudioTrack);
 
@@ -1052,6 +1030,56 @@ void MainWindow::addShape(const QString &type)
     announce(tr("%1 added. Adjust it in the properties panel.").arg(clip.name));
 }
 
+QMenu *MainWindow::createTransitionMenu(QWidget *parent)
+{
+    auto *menu = new QMenu(tr("Transitions"), parent);
+    const QVector<QPair<QString, QString>> types = {
+        {tr("Dissolve"), "dissolve"},
+        {tr("Fade through black"), "black"},
+        {tr("Slide left"), "slideLeft"},
+        {tr("Slide right"), "slideRight"},
+        {tr("Slide up"), "slideUp"},
+        {tr("Slide down"), "slideDown"},
+    };
+    for (const auto &entry : types) {
+        QAction *action = menu->addAction(entry.first);
+        const QString type = entry.second;
+        connect(action, &QAction::triggered, this, [this, type]() { applyTransition(type); });
+    }
+    return menu;
+}
+
+void MainWindow::applyTransition(const QString &type)
+{
+    const auto selected = m_timeline->selectedClips();
+    Clip *from = selected.isEmpty() ? nullptr : selected.first();
+    if (!from) {
+        announce(tr("Select a clip first, then choose a transition for the cut after it."));
+        return;
+    }
+
+    const auto clips = m_project.clipsOn(from->track);
+    Clip *next = nullptr;
+    for (int i = 0; i + 1 < clips.size(); ++i) {
+        if (clips[i]->id == from->id) {
+            next = clips[i + 1];
+            break;
+        }
+    }
+    if (!next) {
+        announce(tr("No clip follows this one on the same track."));
+        return;
+    }
+    if (next->start > from->end() + 0.06) {
+        announce(tr("The next clip has to touch this one for a transition."));
+        return;
+    }
+
+    if (m_project.transitionFor(next->id)) m_timeline->setTransitionType(next->id, type);
+    else m_timeline->addTransitionBetween(from->id, next->id, type);
+    announce(tr("Transition set at the cut. Click the badge to change or remove it."));
+}
+
 // ----------------------------------------------------------------- editing
 
 void MainWindow::splitClip()
@@ -1371,7 +1399,7 @@ void MainWindow::showShortcuts()
            "S — split selected clip at playhead<br>"
            "Delete — delete · Shift+Delete — ripple delete<br>"
            "Ctrl+D — duplicate · Ctrl+C / Ctrl+V — copy / paste<br>"
-           "T — add text · A — add arrow · N — toggle snapping<br>"
+           "T — add text · A — add arrow · N — snapping · X — dissolve at the cut<br>"
            "Ctrl+Z / Ctrl+Y — undo / redo<br><br>"
            "<b>Timeline</b><br>"
            "Ctrl+Wheel — zoom · Wheel — scroll · Middle drag — pan<br>"
@@ -1448,6 +1476,7 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
     else if (key == Qt::Key_S) splitClip();
     else if (key == Qt::Key_T) addText();
     else if (key == Qt::Key_A) addShape("arrow");
+    else if (key == Qt::Key_X) applyTransition("dissolve");
     else if (key == Qt::Key_N) m_btnSnap->toggle();
     else if (key == Qt::Key_F) m_timeline->zoomFit();
     else if (key == Qt::Key_Plus || key == Qt::Key_Equal) m_timeline->zoomIn();
@@ -1702,6 +1731,17 @@ void MainWindow::runSelfTest(const QString &outDir)
             }
         }
     }
+    if (m_timeline->junctionCountForTest() > 0) {
+        const int before = m_project.transitions.size();
+        const QRectF rect = m_timeline->junctionRectForTest(0);
+        QMouseEvent press(QEvent::MouseButtonPress, rect.center(),
+                          m_timeline->mapToGlobal(rect.center()),
+                          Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(m_timeline, &press);
+        log(QString("junction +: transitions %1 -> %2")
+                .arg(before).arg(m_project.transitions.size()));
+    }
+
     m_timeline->selectIds({m_project.clips[1].id});
     m_timeline->setPlayhead(2.5);
     log(QString("project loaded: %1 clips, %2s").arg(m_project.clips.size())
