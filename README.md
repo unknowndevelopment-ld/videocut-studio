@@ -3,6 +3,8 @@
 A free, offline, native video editor for Windows. C++ / Qt 6, real-time
 composited preview, no account, no watermark, no upload.
 
+**Repository:** https://github.com/unknowndevelopment-ld/videocut-studio
+
 **Install:** run `VideoCutStudio-1.2.0-x64.msi` from `dist-cpp\` — it adds a Start
 Menu entry, a desktop shortcut, file association for `.vcs` projects, an
 "Apps & features" entry, and installs to `C:\Program Files\VideoCut Studio`.
@@ -121,7 +123,7 @@ The app updates itself from GitHub Releases:
 1. Bump `project(VideoCutStudio VERSION x.y.z)` in `cpp/CMakeLists.txt`.
 2. Build the installer with the repository baked in:
    ```powershell
-   .\package.ps1 -Repo "yourname/videocut-studio"
+   .\package.ps1 -Repo "unknowndevelopment-ld/videocut-studio"
    ```
    That produces `dist-cpp\VideoCutStudio-<version>-x64.msi` and `update.json`
    (version, size, SHA-256).
